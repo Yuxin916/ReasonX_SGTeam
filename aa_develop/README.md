@@ -30,5 +30,12 @@ docker exec -it ubuntu20_ros bash
 ```
 docker exec -it ubuntu20_ros bash
 
-./launch_module.sh
+./launch_py_module.sh
+
+# new terminal
+rostopic pub /challenge_question std_msgs/String "data: 'how many sofa'"
 ```
+
+### TODO: 
+- [ ] What is the trajectory given for Q4 and Q5? How to visualize it?
+- [ ] Re-organize the interface for question answering ([questions.json](../questions/questions.json))
