@@ -19,7 +19,14 @@ docker exec -it ubuntu20_ros_system bash
 ./launch_system.sh
 
 ```
-## AI Navigation Policy
+## AI Navigation Policy (Given dummy C++ VLM policy)
+```
+docker exec -it ubuntu20_ros bash
+
+./launch_module.sh
+```
+
+# AI Navigation Policy (Python-based dummy VLM policy)
 ```
 docker exec -it ubuntu20_ros bash
 
