@@ -1,5 +1,19 @@
 FROM ros:noetic-ros-core-focal
 
+# === [1] Remove ALL ROS source lists BEFORE apt update ===
+RUN rm -f /etc/apt/sources.list.d/ros* || true
+
+# === [2] Run apt update safely, install gpg tools and curl ===
+RUN apt-get update -o Dir::Etc::sourcelist="sources.list" \
+                   -o Dir::Etc::sourceparts="-" \
+                   -o APT::Get::List-Cleanup="0" && \
+    apt-get install --no-install-recommends -y curl gnupg2 ca-certificates
+
+# === [3] Re-add the valid ROS key and source list ===
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | \
+    gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/sources.list.d/ros1.list
+
 # install bootstrap tools
 RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \

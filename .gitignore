@@ -9,3 +9,8 @@ system/unity/devel/
 .catkin_workspace
 *.pkl
 *.pth
+.idea/
+system/matterport/build/
+system/matterport/devel/
+aa_develop/build/
+aa_develop/devel/

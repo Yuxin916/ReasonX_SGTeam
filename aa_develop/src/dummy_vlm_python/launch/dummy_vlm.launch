@@ -1,0 +1,8 @@
+<launch>
+  <node pkg="dummy_vlm_python" type="dummyVLM.py" name="dummyVLM" output="screen" required="true">
+    <param name="waypoint_file_dir" type="string" value="$(find dummy_vlm_python)/data/waypoints.ply" />
+    <param name="object_list_file_dir" type="string" value="$(find dummy_vlm_python)/data/object_list.txt" />
+    <param name="waypointReachDis" type="double" value="1.0" />
+  </node>
+
+</launch>
