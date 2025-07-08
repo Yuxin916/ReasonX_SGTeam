@@ -27,7 +27,8 @@ from utils.handler import (
     pose_handler,
     question_handler,
     get_question,
-    reset_question
+    reset_question,
+    get_pose
 )
 
 """
@@ -115,25 +116,26 @@ def main():
             rate.sleep()
             continue
 
-        rospy.loginfo(f"Received question: {q}")
         q_lower = q.lower()
 
         if "find" in q_lower:
-            rospy.loginfo("Navigating to object...")
+            rospy.loginfo("Received -> OBJECT question...")
             pub_object_marker(marker_pub, objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel)
             pub_object_waypoint(waypoint_pub, objMidX, objMidY)
 
         elif "how many" in q_lower:
-            rospy.loginfo("Received HOW MANY question...")
+            rospy.loginfo("Received -> HOW MANY question...")
             del_object_marker(marker_pub, objID, objLabel)
             number = decide_numerical_answer_random()
             pub_numerical_answer(numerical_pub, number)
 
         else:
-            rospy.loginfo("Assuming NAVIGATION question...")
+            rospy.loginfo("Received -> INSTRUCTION following question...")
             del_object_marker(marker_pub, objID, objLabel)
             waypointX, waypointY, waypointHeading = decide_traj_follow(waypoint_file_dir)
-            pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, waypointReachDis)
+            vehicleX, vehicleY = get_pose()
+            rospy.loginfo(f"Using current vehicle pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
+            pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, vehicleX, vehicleY, waypointReachDis)
 
         reset_question()
         rospy.loginfo("Awaiting question...")

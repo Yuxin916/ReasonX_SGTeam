@@ -13,7 +13,7 @@ bridge = CvBridge()
 def camera_handler(msg):
     try:
         cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        rospy.loginfo(f"Received image with shape: {cv_image.shape}")
+        # rospy.loginfo(f"Received image with shape: {cv_image.shape}")
         # Optional visualization
         # cv2.imshow("Camera", cv_image)
         # cv2.waitKey(1)
@@ -25,7 +25,7 @@ def pose_handler(msg):
     global vehicleX, vehicleY
     vehicleX = msg.pose.pose.position.x
     vehicleY = msg.pose.pose.position.y
-    rospy.loginfo(f"Received pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
+    # rospy.loginfo(f"Received pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
 
 def question_handler(msg):
     global question
