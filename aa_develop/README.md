@@ -21,6 +21,7 @@ docker exec -it ubuntu20_ros_system bash
 ```
 ## AI Navigation Policy (Given dummy C++ VLM policy)
 ```
+# new terminal
 docker exec -it ubuntu20_ros bash
 
 ./launch_module.sh
@@ -28,6 +29,7 @@ docker exec -it ubuntu20_ros bash
 
 # AI Navigation Policy (Python-based dummy VLM policy)
 ```
+# new terminal
 docker exec -it ubuntu20_ros bash
 apt update
 apt install -y python3-opencv
@@ -37,12 +39,17 @@ export PYTHONPATH=$PYTHONPATH:./aa_develop/src/dummy_vlm_python/
 
 # new terminal
 rostopic pub /challenge_question std_msgs/String "data: 'how many sofa'"
+# or
+rostopic pub /challenge_question std_msgs/String "data: 'find chairs'"
+# or
+rostopic pub /challenge_question std_msgs/String "data: 'Go straight and turn left at the sofa'"
 ```
 
 ### TODO: 
+- [x] Example of navigate to a waypoint and visualize in RViz
 - [ ] Re-organize the interface for question answering ([questions.json](../questions/questions.json))
   - [ ] How to parse the numerical answers? (seems in pdf there are ground truth answers)
   - [ ] How to output the bounding box for the objects?
   - [ ] What is the [trajectory_q4.ply](../questions/studio/trajectory_q4.ply) given for Q4 and Q5? How to visualize this given target trajectory?
 
-- [ ] Example of navigate to a waypoint and visualize in RViz
+
