@@ -63,10 +63,31 @@ def pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, wayp
         rate.sleep()
 
 
-def pub_object_waypoint(waypoint_pub, obj_mid_x, obj_mid_y):
+def pub_object_waypoint(waypoint_pub, obj_mid_x, obj_mid_y, waypointReachDis):
+    """
+    Publishes a single object waypoint (center of the object) and logs vehicle position
+    until the robot gets within `waypointReachDis` to the object.
+    """
     waypoint_msg = Pose2D(x=obj_mid_x, y=obj_mid_y, theta=0)
     waypoint_pub.publish(waypoint_msg)
+    rospy.loginfo(f"[NAV] Sent object waypoint: ({obj_mid_x:.2f}, {obj_mid_y:.2f})")
 
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        vehicleX, vehicleY = get_pose()
+        dx = vehicleX - obj_mid_x
+        dy = vehicleY - obj_mid_y
+        dist = math.hypot(dx, dy)
+
+        rospy.loginfo(f"[NAV] Vehicle: ({vehicleX:.2f}, {vehicleY:.2f}), "
+                      f"Target: ({obj_mid_x:.2f}, {obj_mid_y:.2f}), "
+                      f"Distance: {dist:.2f}")
+
+        if dist < waypointReachDis:
+            rospy.loginfo(f"[NAV] Reached object at ({vehicleX:.2f}, {vehicleY:.2f})")
+            break
+
+        rate.sleep()
 
 def pub_object_marker(marker_pub, obj_info):
     """

@@ -132,7 +132,7 @@ def main():
             rospy.loginfo(f"Using current vehicle pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
 
             pub_object_marker(marker_pub, obj_info)
-            pub_object_waypoint(waypoint_pub, objMidX, objMidY)
+            pub_object_waypoint(waypoint_pub, objMidX, objMidY, waypointReachDis)
 
         elif "how many" in q_lower:
             rospy.loginfo("Received -> HOW MANY question...")
