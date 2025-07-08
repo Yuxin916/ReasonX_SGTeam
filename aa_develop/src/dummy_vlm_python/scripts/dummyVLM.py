@@ -96,15 +96,6 @@ def main():
     marker_pub = rospy.Publisher("selected_object_marker", Marker, queue_size=5)
     numerical_pub = rospy.Publisher("/numerical_response", Int32, queue_size=5)
 
-    # === Load Object Info ===
-    try:
-        obj_data = read_object_list_file(object_list_file_dir)
-        objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel = obj_data
-        rospy.loginfo(f"Loaded object: {objLabel} at ({objMidX}, {objMidY})")
-    except Exception as e:
-        rospy.logfatal(f"Failed to read object list file: {e}")
-        rospy.signal_shutdown("Object list load error")
-        return
 
     # === Main Loop ===
     rospy.loginfo("Awaiting question...")
@@ -120,7 +111,27 @@ def main():
 
         if "find" in q_lower:
             rospy.loginfo("Received -> OBJECT question...")
-            pub_object_marker(marker_pub, objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel)
+
+            obj_data = read_object_list_file(object_list_file_dir)
+            objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel = obj_data
+            rospy.loginfo(f"Loaded object: {objLabel} at ({objMidX}, {objMidY})")
+
+            obj_info = {
+                'id': objID,
+                'mid_x': objMidX,
+                'mid_y': objMidY,
+                'mid_z': objMidZ,
+                'l': objL,
+                'w': objW,
+                'h': objH,
+                'heading': objHeading,
+                'label': objLabel,
+            }
+
+            vehicleX, vehicleY = get_pose()
+            rospy.loginfo(f"Using current vehicle pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
+
+            pub_object_marker(marker_pub, obj_info)
             pub_object_waypoint(waypoint_pub, objMidX, objMidY)
 
         elif "how many" in q_lower:
@@ -135,7 +146,7 @@ def main():
             waypointX, waypointY, waypointHeading = decide_traj_follow(waypoint_file_dir)
             vehicleX, vehicleY = get_pose()
             rospy.loginfo(f"Using current vehicle pose: x={vehicleX:.2f}, y={vehicleY:.2f}")
-            pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, vehicleX, vehicleY, waypointReachDis)
+            pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, waypointReachDis)
 
         reset_question()
         rospy.loginfo("Awaiting question...")

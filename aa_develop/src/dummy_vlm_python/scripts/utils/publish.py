@@ -6,6 +6,7 @@ from std_msgs.msg import String, Int32
 from geometry_msgs.msg import Pose2D
 from visualization_msgs.msg import Marker
 
+from utils.handler import get_pose
 
 def pub_numerical_answer(numerical_pub, number):
     """
@@ -16,25 +17,49 @@ def pub_numerical_answer(numerical_pub, number):
     numerical_pub.publish(numerical_msg)
 
 
-def pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, vehicleX, vehicleY, waypointReachDis):
+def pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, waypointReachDis):
+    """
+    Publishes a series of waypoints to the waypoint topic.
+    logs the vehicle's position and the distance to the current waypoint.
+    """
     if not waypointX:
         rospy.logerr("No waypoint available, exiting.")
-        exit(1)
+        return
 
     waypoint_id = 0
-    waypoint_msg = Pose2D(x=waypointX[waypoint_id], y=waypointY[waypoint_id], theta=waypointHeading[waypoint_id])
+    waypoint_msg = Pose2D(
+        x=waypointX[waypoint_id],
+        y=waypointY[waypoint_id],
+        theta=waypointHeading[waypoint_id]
+    )
     waypoint_pub.publish(waypoint_msg)
+    rospy.loginfo(f"[NAV] Sent initial waypoint: ({waypoint_msg.x:.2f}, {waypoint_msg.y:.2f})")
 
-    rate = rospy.Rate(100)
+    rate = rospy.Rate(10)
     while not rospy.is_shutdown():
+        vehicleX, vehicleY = get_pose()
         dx = vehicleX - waypointX[waypoint_id]
         dy = vehicleY - waypointY[waypoint_id]
-        if math.hypot(dx, dy) < waypointReachDis:
+        dist = math.hypot(dx, dy)
+
+        rospy.loginfo(f"[NAV] Vehicle: ({vehicleX:.2f}, {vehicleY:.2f}), "
+                      f"Target: ({waypointX[waypoint_id]:.2f}, {waypointY[waypoint_id]:.2f}), "
+                      f"Distance: {dist:.2f}")
+
+        if dist < waypointReachDis:
             if waypoint_id == len(waypointX) - 1:
+                rospy.loginfo(f"[NAV] Final waypoint reached at ({vehicleX:.2f}, {vehicleY:.2f})")
                 break
             waypoint_id += 1
-            waypoint_msg = Pose2D(x=waypointX[waypoint_id], y=waypointY[waypoint_id], theta=waypointHeading[waypoint_id])
+            waypoint_msg = Pose2D(
+                x=waypointX[waypoint_id],
+                y=waypointY[waypoint_id],
+                theta=waypointHeading[waypoint_id]
+            )
             waypoint_pub.publish(waypoint_msg)
+            rospy.loginfo(f"[NAV] Advancing to waypoint {waypoint_id}: "
+                          f"({waypoint_msg.x:.2f}, {waypoint_msg.y:.2f})")
+
         rate.sleep()
 
 
@@ -45,6 +70,8 @@ def pub_object_waypoint(waypoint_pub, obj_mid_x, obj_mid_y):
 
 def pub_object_marker(marker_pub, obj_info):
     """
+    publishes a 3D marker (usually visualized in RViz) to highlight where the object is in the environment
+
     obj_info should be a dict or namedtuple with:
         id, mid_x, mid_y, mid_z, l, w, h, heading, label
     """
