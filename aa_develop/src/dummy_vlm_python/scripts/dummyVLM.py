@@ -2,209 +2,76 @@
 
 import rospy
 import math
-import random
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Pose2D
 from visualization_msgs.msg import Marker
 from std_msgs.msg import String, Int32
-import tf
-import os
 
+# === Internal Utilities ===
+from utils.decide import decide_numerical_answer_random, decide_traj_follow
+from utils.publish import (
+    pub_numerical_answer,
+    pub_path_waypoints,
+    pub_object_waypoint,
+    pub_object_marker,
+    del_object_marker
+)
+from utils.read_in import read_object_list_file
+from utils.handler import (
+    camera_handler,
+    pose_handler,
+    question_handler,
+    get_question,
+    reset_question
+)
 
+"""
+Read a question as a ROS String message on the `/challenge_question` topic. 
+The dummy model will then:
+    either publish an integer as an Int32 message, 
+    send bounding box visualization markers for object reference, 
+    or waypoints to guide vehicle navigation. 
+    
+The three types of messages are listed below. To integrate the a model with the system, please modify the system startup script.
+- Numerical response: ROS Int32 message on topic `/numerical_response`, containing an integer answering a numerical question.
+- Visualization marker: ROS Marker message on topic `/selected_object_marker`, containing object label and bounding box of the selected object.
+- Waypoint: ROS Pose2D message on topic `/way_point_with_heading` (neglect the heading for this year’s challenge).
+"""
+
+# === Globals ===
 waypoint_file_dir = ""
 object_list_file_dir = ""
 waypointReachDis = 1.0
 
-waypointX, waypointY, waypointHeading = [], [], []
-
+# Dummy object info for marker and navigation
 objID = 0
 objMidX, objMidY, objMidZ = 0.0, 0.0, 0.0
 objL, objW, objH, objHeading = 0.0, 0.0, 0.0, 0.0
 objLabel = ""
 
-vehicleX, vehicleY = 0.0, 0.0
-question = ""
-
-
-def read_waypoint_file():
-    global waypointX, waypointY, waypointHeading
-    with open(waypoint_file_dir, 'r') as f:
-        while True:
-            line = f.readline().strip()
-            if line == "end_header":
-                break
-            if line.startswith("element vertex"):
-                pointNum = int(line.split()[-1])
-
-        for _ in range(pointNum):
-            line = f.readline().strip().split()
-            if len(line) < 3:
-                rospy.logerr("Invalid waypoint format.")
-                exit(1)
-            x, y, heading = map(float, line)
-            waypointX.append(x)
-            waypointY.append(y)
-            waypointHeading.append(heading)
-
-
-def read_object_list_file():
-    global objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel
-
-    rospy.loginfo(f"Opening object list file: {object_list_file_dir}")
-    with open(object_list_file_dir, 'r') as f:
-        parts = []
-        while len(parts) < 9:
-            line = f.readline()
-            rospy.loginfo(f"Read line: {line.strip()}")
-            if not line:
-                rospy.logfatal("Unexpected end of file while reading object data.")
-                rospy.signal_shutdown("Malformed object file")
-                return
-            parts += line.strip().split()
-
-        rospy.loginfo(f"Parsed object parts: {parts}")
-
-        try:
-            objID = int(parts[0])
-            objMidX = float(parts[1])
-            objMidY = float(parts[2])
-            objMidZ = float(parts[3])
-            objL = float(parts[4])
-            objW = float(parts[5])
-            objH = float(parts[6])
-            objHeading = float(parts[7])
-            objLabel = parts[8].strip('"')
-        except Exception as e:
-            rospy.logfatal(f"Error parsing object values: {e}")
-            rospy.signal_shutdown("Parse error")
-            return
-
-        # handle multi-word label (e.g., "dining table")
-        if not parts[8].endswith('"'):
-            rest = []
-            while True:
-                word = f.readline().strip()
-                rospy.loginfo(f"Reading label continuation: {word}")
-                rest.append(word)
-                if word.endswith('"'):
-                    break
-                if word == '':
-                    rospy.logfatal("Unterminated object label")
-                    rospy.signal_shutdown("Malformed label")
-                    return
-            objLabel += ' ' + ' '.join(rest).strip('"')
-
-    rospy.loginfo(f"Object label: {objLabel}")
-
-
-def pose_handler(msg):
-    global vehicleX, vehicleY
-    vehicleX = msg.pose.pose.position.x
-    vehicleY = msg.pose.pose.position.y
-
-
-def question_handler(msg):
-    global question
-    question = msg.data
-    rospy.loginfo("Received question: %s", question)
-
-
-def pub_path_waypoints(waypoint_pub):
-    if not waypointX:
-        rospy.logerr("No waypoint available, exiting.")
-        exit(1)
-
-    waypoint_id = 0
-    waypoint_msg = Pose2D(x=waypointX[waypoint_id], y=waypointY[waypoint_id], theta=waypointHeading[waypoint_id])
-    waypoint_pub.publish(waypoint_msg)
-
-    rate = rospy.Rate(100)
-    while not rospy.is_shutdown():
-        dx = vehicleX - waypointX[waypoint_id]
-        dy = vehicleY - waypointY[waypoint_id]
-        if math.hypot(dx, dy) < waypointReachDis:
-            if waypoint_id == len(waypointX) - 1:
-                break
-            waypoint_id += 1
-            waypoint_msg = Pose2D(x=waypointX[waypoint_id], y=waypointY[waypoint_id], theta=waypointHeading[waypoint_id])
-            waypoint_pub.publish(waypoint_msg)
-        rate.sleep()
-
-
-def pub_object_waypoint(waypoint_pub):
-    waypoint_msg = Pose2D(x=objMidX, y=objMidY, theta=0)
-    waypoint_pub.publish(waypoint_msg)
-
-
-def pub_object_marker(marker_pub):
-    marker = Marker()
-    marker.header.frame_id = "map"
-    marker.header.stamp = rospy.Time.now()
-    marker.ns = objLabel
-    marker.id = objID
-    marker.action = Marker.ADD
-    marker.type = Marker.CUBE
-    marker.pose.position.x = objMidX
-    marker.pose.position.y = objMidY
-    marker.pose.position.z = objMidZ
-    quaternion = tf.transformations.quaternion_from_euler(0, 0, objHeading)
-    marker.pose.orientation.x = quaternion[0]
-    marker.pose.orientation.y = quaternion[1]
-    marker.pose.orientation.z = quaternion[2]
-    marker.pose.orientation.w = quaternion[3]
-    marker.scale.x = objL
-    marker.scale.y = objW
-    marker.scale.z = objH
-    marker.color.a = 0.5
-    marker.color.r = 0.0
-    marker.color.g = 0.0
-    marker.color.b = 1.0
-    marker_pub.publish(marker)
-
-
-def del_object_marker(marker_pub):
-    marker = Marker()
-    marker.header.frame_id = "map"
-    marker.header.stamp = rospy.Time.now()
-    marker.ns = objLabel
-    marker.id = objID
-    marker.action = Marker.DELETE
-    marker_pub.publish(marker)
-
-
-def pub_numerical_answer(numerical_pub):
-    number = random.randint(1, 10)
-    rospy.loginfo("Answer: %d", number)
-    numerical_msg = Int32(data=number)
-    numerical_pub.publish(numerical_msg)
-
-
 def main():
+    # Initializes the ROS node
     rospy.init_node("dummyVLM", anonymous=False)
     rospy.loginfo(">>> dummyVLM node started")
 
-    global waypoint_file_dir, object_list_file_dir, waypointReachDis, question
+    global waypoint_file_dir, object_list_file_dir, waypointReachDis
+    global objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel
 
-    try:
-        waypoint_file_dir = rospy.get_param("~waypoint_file_dir")
-        rospy.loginfo(f"[PARAM] waypoint_file_dir = {waypoint_file_dir}")
-    except KeyError:
-        rospy.logfatal("Missing param: ~waypoint_file_dir")
-        rospy.signal_shutdown("Missing param")
-        return
-
-    try:
-        object_list_file_dir = rospy.get_param("~object_list_file_dir")
-        rospy.loginfo(f"[PARAM] object_list_file_dir = {object_list_file_dir}")
-    except KeyError:
-        rospy.logfatal("Missing param: ~object_list_file_dir")
-        rospy.signal_shutdown("Missing param")
-        return
-
+    # === Load Params ===
+    waypoint_file_dir = rospy.get_param("~waypoint_file_dir")
+    object_list_file_dir = rospy.get_param("~object_list_file_dir")
     waypointReachDis = rospy.get_param("~waypointReachDis", 1.0)
+
+    rospy.loginfo(f"[PARAM] waypoint_file_dir = {waypoint_file_dir}")
+    rospy.loginfo(f"[PARAM] object_list_file_dir = {object_list_file_dir}")
     rospy.loginfo(f"[PARAM] waypointReachDis = {waypointReachDis}")
 
-    # Confirm file paths exist
+    # === Check files exist ===
     if not os.path.exists(waypoint_file_dir):
         rospy.logfatal(f"Waypoint file not found: {waypoint_file_dir}")
         rospy.signal_shutdown("Missing waypoint file")
@@ -215,62 +82,60 @@ def main():
         rospy.signal_shutdown("Missing object list file")
         return
 
-    rospy.loginfo("Subscribing to /state_estimation and /challenge_question")
+    # === ROS Subscribers ===
+    rospy.Subscriber("/camera/image", Image, camera_handler)
+    # rospy.Subscriber("/registered_scan", PointCloud2, registered_scan_handler)
+    # rospy.Subscriber("/sensor_scan", PointCloud2, sensor_scan_handler)
+    # rospy.Subscriber("/traversable_area", PointCloud2, traversable_area_handler)
     rospy.Subscriber("/state_estimation", Odometry, pose_handler)
     rospy.Subscriber("/challenge_question", String, question_handler)
 
-    rospy.loginfo("Creating publishers")
+    # === ROS Publishers ===
     waypoint_pub = rospy.Publisher("/way_point_with_heading", Pose2D, queue_size=5)
     marker_pub = rospy.Publisher("selected_object_marker", Marker, queue_size=5)
     numerical_pub = rospy.Publisher("/numerical_response", Int32, queue_size=5)
 
-    rospy.loginfo("Reading waypoint file...")
+    # === Load Object Info ===
     try:
-        read_waypoint_file()
-        rospy.loginfo("Waypoints loaded: %d", len(waypointX))
-    except Exception as e:
-        rospy.logfatal(f"Failed to read waypoint file: {e}")
-        rospy.signal_shutdown("Waypoint load error")
-        return
-
-    rospy.loginfo("Reading object file...")
-    try:
-        read_object_list_file()
+        obj_data = read_object_list_file(object_list_file_dir)
+        objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel = obj_data
         rospy.loginfo(f"Loaded object: {objLabel} at ({objMidX}, {objMidY})")
     except Exception as e:
         rospy.logfatal(f"Failed to read object list file: {e}")
         rospy.signal_shutdown("Object list load error")
         return
 
+    # === Main Loop ===
     rospy.loginfo("Awaiting question...")
-
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
-        if not question:
+        q = get_question()
+        if not q:
             rospy.logdebug("No question received yet...")
             rate.sleep()
             continue
 
-        q_lower = question.lower()
-        rospy.loginfo("Received question: %s", question)
+        rospy.loginfo(f"Received question: {q}")
+        q_lower = q.lower()
 
         if "find" in q_lower:
             rospy.loginfo("Navigating to object...")
-            pub_object_marker(marker_pub)
-            pub_object_waypoint(waypoint_pub)
+            pub_object_marker(marker_pub, objID, objMidX, objMidY, objMidZ, objL, objW, objH, objHeading, objLabel)
+            pub_object_waypoint(waypoint_pub, objMidX, objMidY)
 
         elif "how many" in q_lower:
             rospy.loginfo("Received HOW MANY question...")
-            del_object_marker(marker_pub)
-            pub_numerical_answer(numerical_pub)
+            del_object_marker(marker_pub, objID, objLabel)
+            number = decide_numerical_answer_random()
+            pub_numerical_answer(numerical_pub, number)
 
         else:
             rospy.loginfo("Assuming NAVIGATION question...")
-            del_object_marker(marker_pub)
-            pub_path_waypoints(waypoint_pub)
-            rospy.loginfo("Navigation ends.")
+            del_object_marker(marker_pub, objID, objLabel)
+            waypointX, waypointY, waypointHeading = decide_traj_follow(waypoint_file_dir)
+            pub_path_waypoints(waypoint_pub, waypointX, waypointY, waypointHeading, waypointReachDis)
 
-        question = ""
+        reset_question()
         rospy.loginfo("Awaiting question...")
 
 
