@@ -1,0 +1,8 @@
+<launch>
+    <node pkg="vln_module" type="challenge_agent_node.py" name="challenge_agent" output="screen" />
+
+    <node pkg="vln_module" type="pixel_to_waypoint_node.py" name="pixel_to_waypoint" output="screen" />
+
+    <node pkg="vln_module" type="navigation_watcher_node.py" name="navigation_watcher" output="screen" />
+
+</launch>

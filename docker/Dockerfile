@@ -22,6 +22,37 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     python3-vcstools \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get install -y --no-install-recommends python3.9 python3.9-distutils && \
+    # Install pip specifically for python3.9
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9 && \
+    rm -rf /var/lib/apt/lists/*
+
+# === Install ROS packages and Python dependencies for ROS ===
+# We now install `python3-netifaces` via apt. This is the key change.
+# `apt` will install it for the system's default Python 3.8, which is what roslaunch needs.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        python3-pip \
+        python3-rosdep \
+        python3-rosinstall \
+        python3-vcstools \
+        python3-netifaces \
+        ros-noetic-ros-base=1.5.0-1* \
+        ros-noetic-cv-bridge \
+        ros-noetic-tf \
+    && rm -rf /var/lib/apt/lists/*
+
+# === Install Python packages specifically for Python 3.9 ===
+# Use `python3.9 -m pip` to ensure these are installed for the newer interpreter.
+# We add `rospy` here so that Python 3.9 scripts can act as ROS nodes.
+RUN python3.9 -m pip install --no-cache-dir --upgrade pip
+RUN python3.9 -m pip install --no-cache-dir -q -U google-genai flask pillow
+
+RUN python3 -m pip install --no-cache-dir flask pillow requests
+    
 # bootstrap rosdep
 RUN rosdep init && \
   rosdep update --rosdistro $ROS_DISTRO
