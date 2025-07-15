@@ -14,7 +14,7 @@ This guide explains how to set up and run the VLN (Vision-and-Language Navigatio
     ```
     Ensure there are no errors.
 
-3. **Build and source the workspace**  
+3. **Build and source the workspace, launch the vln nodes**  
     In a second terminal:
     ```bash
     cd aa_develop/
