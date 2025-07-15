@@ -33,7 +33,7 @@ This guide explains how to set up and run the VLN (Vision-and-Language Navigatio
 5. **Publish a challenge question**  
     In another terminal, publish a question to the ROS topic. Example:
     ```bash
-    rostopic pub -1 /challenge_question std_msgs/String "navigate to the green pillow on the sofa farthest from the window"
+    rostopic pub -1 /challenge_question std_msgs/String "navigate to the teal pillow on the sofa farthest from the window"
     ```
 
 6. **Visualize the pixel goal in RViz**  
