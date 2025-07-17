@@ -1,0 +1,18 @@
+<launch>
+  <!-- occupancy_map_generator node -->
+  <node pkg="occupancy_map_generator" type="occupancy_map_generator.py" name="occupancyGridGenerator" output="screen">
+    <!-- Parameters can be set here -->
+    <param name="sensor_model_p_occ"        value="0.75"/>
+    <param name="sensor_model_p_free"       value="0.45"/> 
+    <param name="sensor_model_p_prior"      value="0.5"/> 
+    <param name="robot_frame"               value="sensor"/> 
+    <param name="map_frame"                 value="map"/> 
+    <param name="map_center_x"              value="-50.0"/> 
+    <param name="map_center_y"              value="-50.0"/> 
+    <param name="map_size_x"                value="60.0"/> 
+    <param name="map_size_y"                value="60.0"/> 
+    <param name="map_resolution"            value="0.1"/> 
+    <param name="map_publish_freq"          value="0.2"/> 
+    <param name="update_movement"           value="0.05"/> <!-- update when moved this much -->
+  </node>
+</launch>
