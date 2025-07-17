@@ -5,8 +5,8 @@ RUN rm -f /etc/apt/sources.list.d/ros* || true
 
 # === [2] Run apt update safely, install gpg tools and curl ===
 RUN apt-get update -o Dir::Etc::sourcelist="sources.list" \
-                   -o Dir::Etc::sourceparts="-" \
-                   -o APT::Get::List-Cleanup="0" && \
+    -o Dir::Etc::sourceparts="-" \
+    -o APT::Get::List-Cleanup="0" && \
     apt-get install --no-install-recommends -y curl gnupg2 ca-certificates
 
 # === [3] Re-add the valid ROS key and source list ===
@@ -24,11 +24,18 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 # bootstrap rosdep
 RUN rosdep init && \
-  rosdep update --rosdistro $ROS_DISTRO
+    rosdep update --rosdistro $ROS_DISTRO
 
 # install ros packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-ros-base=1.5.0-1* \
+    ros-noetic-tf \
+    python3-opencv \
+    python3-scipy \
+    ros-noetic-cv-bridge \
+    ros-noetic-image-transport \
+    ros-noetic-rqt \
+    ros-noetic-rqt-common-plugins \
     && rm -rf /var/lib/apt/lists/*
 
 # Source ROS
