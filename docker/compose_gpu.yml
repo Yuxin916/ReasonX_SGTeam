@@ -9,7 +9,7 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /home/$USER/CMU-VLA-Challenge
+    working_dir: /home/$USER/ReasonX_SGTeam
     # Enabling Nvidia GPUs
     deploy:
       resources:
@@ -41,7 +41,7 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /home/$USER/CMU-VLA-Challenge
+    working_dir: /home/$USER/ReasonX_SGTeam
     # Enabling Nvidia GPUs
     deploy:
       resources:
