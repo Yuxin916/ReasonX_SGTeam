@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-image-transport \
     ros-noetic-rqt \
     ros-noetic-rqt-common-plugins \
+    ros-noetic-pcl-ros \
     && rm -rf /var/lib/apt/lists/*
 
 # Source ROS
