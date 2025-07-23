@@ -14,3 +14,8 @@ system/matterport/build/
 system/matterport/devel/
 aa_develop/build/
 aa_develop/devel/
+
+# Ignore the model weights
+aa_develop/src/object_detector/models/*
+# BUt include the README file
+!aa_develop/src/object_detector/models/README.md
