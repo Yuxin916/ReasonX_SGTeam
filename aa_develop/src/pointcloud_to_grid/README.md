@@ -2,6 +2,27 @@
 This package converts `sensor_msgs/PointCloud2` LIDAR data to `nav_msgs/OccupancyGrid` 2D map data based on intensity and / or height.
 ![](doc/grid_map01.gif)
 
+## Dependency
+
+This module depends on the following packages to function properly:
+
+```
+ros-noetic-pcl-ros
+```
+
+## How to Run
+
+To run this node, run these commands in catkin workspace:
+
+```bash
+catkin_make
+source devel/setup.bash
+
+roslaunch pointcloud_to_grid demo.launch
+```
+
+## Below is the Original README
+
 ## Build
 ```
 cd ~/catkin_ws/src 
@@ -61,11 +82,3 @@ roslaunch pointcloud_to_grid rviz.launch
 ## Related solutions
 - [github.com/ANYbotics/grid_map](https://github.com/ANYbotics/grid_map) - This is a C++ library with ROS interface to manage two-dimensional grid maps with multiple data layers. 
 - [github.com/306327680/PointCloud-to-grid-map](https://github.com/306327680/PointCloud-to-grid-map) - A similar solution but instead PointCloud2 it uses PointCloud
-
-
-## Cite & paper
-
-If you use any of this code please consider citing TODO:
-
-```bibtex
-```
