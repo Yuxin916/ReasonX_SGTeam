@@ -163,7 +163,6 @@ catkin_python_setup()
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/challenge_agent_node.py
-  scripts/image_saver_node.py
   scripts/navigation_watcher_node.py
   scripts/pixel_to_waypoint_node.py
   scripts/box_visualizer_node.py

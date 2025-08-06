@@ -63,8 +63,8 @@ class VLMPlanner:
     2. Within that CHOSEN image, provide a clear natural language description of the navigation target.
 
     You have two choices for your action type:
-    1. "navigation": If you should move. You must specify the `image_division` and provide a `subgoal_description`. This description MUST start with "Point to" or "Point out".
-        - Example: "Point to the free area between the black chair and the sofa." or "Point out the plant".
+    1. "navigation": If you should move. You must specify the `image_division` and provide a `subgoal_description`. This description MUST start with "Point to the free area".
+        - Example: "Point to the free area between the black chair and the sofa." or "Point to the free area in front of the plant".
     2. "end": If you believe the mission is complete.
 
     Respond ONLY with a single JSON object in this exact format (no extra text):
@@ -73,7 +73,7 @@ class VLMPlanner:
       "type": "navigation" or "end",
       "reasoning": "<brief explanation of your decision>",
       "image_division": "<'left', 'center', or 'right', required if type is 'navigation'>",
-      "subgoal_description": "<A description for the CHOSEN division, starting with 'Point to the free area' or 'Point out'>"
+      "subgoal_description": "<A description for the CHOSEN division, starting with 'Point to the free area'>"
     }}
     You will begin to move after you receive the first set of images.
     """
