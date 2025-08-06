@@ -42,7 +42,7 @@ class RoboReferClient:
         # The prompt suffix required by the roborefer API
         self.suffix = " Your answer should be formatted as a list of tuples, i.e. [(x1, y1)], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
 
-    def get_pixel_from_description(self, image: Image.Image, description: str) -> Point | None:
+    def get_pixel_from_description(self, image: Image.Image, description: str):
         """
         Takes a PIL image and a text description, calls the roborefer server,
         and returns the denormalized pixel coordinate relative to THAT image.
