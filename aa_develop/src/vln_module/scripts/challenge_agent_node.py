@@ -18,50 +18,67 @@ import rospy
 from geometry_msgs.msg import Point
 from PIL import Image
 
+import io
+import base64
+
 class RoboReferClient:
     """A client to interact with the roborefer grounding server."""
-    def __init__(self, server_url="http://127.0.0.1:25547"):
+    def __init__(self, server_url="http://127.0.0.1:25547/query"):
         self.server_url = server_url
         # The prompt suffix required by the roborefer API
         self.suffix = " Your answer should be formatted as a list of tuples, i.e. [(x1, y1)], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
 
     def get_pixel_from_description(self, image: Image.Image, description: str):
         """
-        Takes a PIL image and a text description, calls the roborefer server,
-        and returns the denormalized pixel coordinate relative to THAT image.
+        Takes a PIL image and a text description, encodes the image to base64,
+        sends a JSON request to the server, and returns the denormalized pixel coordinate.
         """
         rospy.loginfo(f"RoboRefer: Grounding description: '{description}'")
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            image.save(tmp.name, "PNG")
-            tmp_path = tmp.name
-        
-        try:
-            full_prompt = description + self.suffix
-            with open(tmp_path, 'rb') as f:
-                files = {'images': (os.path.basename(tmp_path), f, 'image/png')}
-                data = {'prompt': full_prompt}
-                rospy.loginfo(f"RoboRefer: Calling server at {self.server_url} with a {image.size[0]}x{image.size[1]} image.")
-                response = requests.post(self.server_url, files=files, data=data, timeout=20)
-                response.raise_for_status()
-                
-                normalized_points = ast.literal_eval(response.text.strip())
-                if not normalized_points or not isinstance(normalized_points, list):
-                    rospy.logerr("RoboRefer: Did not return a valid list of points.")
-                    return None
 
-                nx, ny = normalized_points[0]
-                width, height = image.size
-                pixel_x = int(nx * width)
-                pixel_y = int(ny * height)
-                
-                rospy.loginfo(f"RoboRefer: Grounded to relative pixel ({pixel_x}, {pixel_y})")
-                return Point(x=pixel_x, y=pixel_y, z=0)
+        try:
+            # 1. Convert the PIL Image to a base64 string without saving to a file
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            image_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+            # 2. Construct the JSON payload the server expects
+            full_prompt = description + self.suffix
+            payload = {
+                "image_url": [image_b64],
+                "depth_url": [],
+                "enable_depth": 0,
+                "text": full_prompt
+            }
+
+            rospy.loginfo(
+                f"RoboRefer: Calling server at {self.server_url} with a {image.size[0]}x{image.size[1]} image.")
+
+            # 3. Send the request using the `json` parameter
+            # This automatically sets the Content-Type header to "application/json"
+            response = requests.post(self.server_url, json=payload, timeout=20)
+            response.raise_for_status()  # This will check for any HTTP errors like 415
+
+            # 4. Parse the JSON response from the server
+            # Note: The server sends back JSON, not a plain text string
+            response_data = response.json()
+            answer_str = response_data.get('answer', '[]')
+
+            normalized_points = ast.literal_eval(answer_str.strip())
+            if not normalized_points or not isinstance(normalized_points, list):
+                rospy.logerr("RoboRefer: Did not return a valid list of points.")
+                return None
+
+            nx, ny = normalized_points[0]
+            width, height = image.size
+            pixel_x = int(nx * width)
+            pixel_y = int(ny * height)
+
+            rospy.loginfo(f"RoboRefer: Grounded to relative pixel ({pixel_x}, {pixel_y})")
+            return Point(x=pixel_x, y=pixel_y, z=0)
+
         except Exception as e:
             rospy.logerr(f"RoboRefer call or parsing failed: {e}")
             return None
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
 
 class ChallengeAgentNode:
     def __init__(self):
