@@ -1,8 +1,11 @@
+# vln_module/utils/vlm_client.py
+
 import rospy
 import requests
 import base64
 import io
 from PIL import Image as PILImage
+from typing import List, Dict, Any
 
 class VLMClient:
     """
@@ -25,7 +28,7 @@ class VLMClient:
             rospy.logerr(f"Failed to start new mission on VLM server: {e}")
             return False
 
-    def get_vlm_response(self, panoramic_image: PILImage.Image) -> dict:
+    def get_vlm_response(self, panoramic_image: PILImage.Image, reprompt: str = None) -> Dict[str, Any]:
         """Encodes the image, sends it, and gets the next action."""
         # Convert PIL Image to a Base64 string
         buffered = io.BytesIO()
@@ -34,7 +37,11 @@ class VLMClient:
 
         try:
             endpoint = f"{self.server_url}/get_next_action"
+            # MODIFIED: Payload can now include an optional reprompt message
             payload = {"image": base64_image_str}
+            if reprompt:
+                payload['reprompt'] = reprompt
+            
             response = requests.post(endpoint, json=payload, timeout=60) # Longer timeout for VLM processing
             response.raise_for_status()
             
@@ -42,4 +49,23 @@ class VLMClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             rospy.logerr(f"Failed to get VLM response from server: {e}")
-            return {'type': 'error', 'data': 'HTTP request failed'}
+            return {'type': 'error', 'reasoning': f'HTTP request failed: {e}'}
+
+    # --- NEW METHOD to call the new server endpoint ---
+    def find_target_in_list(self, question: str, object_list: List[str]) -> Dict[str, Any]:
+        """
+        Asks the VLM server to identify a target object from a list by calling the /find_target endpoint.
+        """
+        try:
+            endpoint = f"{self.server_url}/find_target"
+            payload = {"question": question, "object_list": object_list}
+            rospy.loginfo(f"Calling /find_target with {len(object_list)} objects.")
+            response = requests.post(endpoint, json=payload, timeout=45)
+            response.raise_for_status()
+
+            # Return the JSON dictionary from the server
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            rospy.logerr(f"Failed to call /find_target on VLM server: {e}")
+            # Return a dict that signals failure to the agent node
+            return {'is_present': False, 'reasoning': f'HTTP request failed: {e}'}
