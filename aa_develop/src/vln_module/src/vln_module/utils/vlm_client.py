@@ -28,8 +28,8 @@ class VLMClient:
             rospy.logerr(f"Failed to start new mission on VLM server: {e}")
             return False
 
-    def get_vlm_response(self, panoramic_image: PILImage.Image, reprompt: str = None) -> Dict[str, Any]:
-        """Encodes the image, sends it, and gets the next action."""
+    def get_vlm_response(self, panoramic_image: PILImage.Image, question: str, reprompt: str = None) -> Dict[str, Any]:
+        """Encodes the image, sends it, and gets the next action. Now also sends the original question."""
         # Convert PIL Image to a Base64 string
         buffered = io.BytesIO()
         panoramic_image.save(buffered, format="PNG")
@@ -37,15 +37,11 @@ class VLMClient:
 
         try:
             endpoint = f"{self.server_url}/get_next_action"
-            # MODIFIED: Payload can now include an optional reprompt message
-            payload = {"image": base64_image_str}
+            payload = {"image": base64_image_str, "question": question}
             if reprompt:
                 payload['reprompt'] = reprompt
-            
-            response = requests.post(endpoint, json=payload, timeout=60) # Longer timeout for VLM processing
+            response = requests.post(endpoint, json=payload, timeout=60)
             response.raise_for_status()
-            
-            # The response JSON is the action dictionary we need
             return response.json()
         except requests.exceptions.RequestException as e:
             rospy.logerr(f"Failed to get VLM response from server: {e}")

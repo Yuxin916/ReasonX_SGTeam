@@ -34,6 +34,7 @@ def get_next_action():
     Expects JSON: {"image": "base64-encoded-string", "reprompt": "optional-string"}
     """
     data = request.get_json()
+    question = data['question']
     if not data or 'image' not in data:
         return jsonify({"error": "Missing 'image' data in request body"}), 400
 
@@ -50,8 +51,8 @@ def get_next_action():
     reprompt = data.get('reprompt', None)
 
     # Call the VLM planner with the image and the optional reprompt
-    action_response = vlm_planner.get_vlm_response(panoramic_image, reprompt=reprompt)
-    
+    action_response = vlm_planner.get_vlm_response(panoramic_image, question=question, reprompt=reprompt)
+
     if action_response:
         return jsonify(action_response.model_dump())
     else:
