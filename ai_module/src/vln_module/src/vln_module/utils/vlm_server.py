@@ -88,7 +88,8 @@ def find_target():
 if __name__ == '__main__':
     # Make sure your GOOGLE_API_KEY is set as an environment variable before running
     if not os.getenv("GOOGLE_API_KEY"):
-        print("\nERROR: Please set the GOOGLE_API_KEY environment variable first.")
-        print("Example: export GOOGLE_API_KEY='your_key_here'\n")
-        exit()
+        # print("\nERROR: Please set the GOOGLE_API_KEY environment variable first.")
+        # print("Example: export GOOGLE_API_KEY='your_key_here'\n")
+        # exit()
+        pass
     app.run(host='0.0.0.0', port=5000, debug=False) # Switched debug to False for stability

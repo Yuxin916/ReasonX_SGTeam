@@ -70,6 +70,8 @@ class VLMPlanner:
         logging.info("Initializing VLM Planner...")
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
+            # api_key = "AIzaSyDo6m4aQtQSU7ILS6ZlDxXz6P_YCxmOeoQ"
+            logging.warning("GOOGLE_API_KEY environment variable not set. Using the default API key.")
             logging.error("GOOGLE_API_KEY environment variable not set!")
             raise ValueError("API Key not found")
         
@@ -151,11 +153,19 @@ class VLMPlanner:
             3. Work through subgoals in sequence
             4. You must visually confirm arrival at each target before marking it complete
             5. Include updated subgoal_states in EVERY response
-            6. When describing where to move (subgoal_description):
-               - Use EXACTLY the same language as in the subgoal list
-               - Just add "Point to the free area near/at/between" in front
-               - Example: If subgoal is "vase on the cabinet", say "Point to the free area near vase on the cabinet"
-               - Example: If subgoal is "free space between couch and table", say "Point to the free space between couch and table"
+            6. Navigation Strategy for Subgoals:
+               IF TARGET IS VISIBLE in any view:
+                 - Use EXACTLY the same language as in the subgoal list
+                 - Just add "Point to the free area near/at/between" in front
+                 - Example: If subgoal is "vase on the cabinet", say "Point to the free area near vase on the cabinet"
+               IF TARGET IS NOT VISIBLE:
+                 - Look for environmental cues or connecting spaces that might lead to the target
+                 - Choose directions that open up more of the space
+                 - Describe navigation in terms of visible landmarks or spaces
+                 - Examples:
+                   • For "guitar in bedroom" but bedroom isn't visible: "Point to the free area near the hallway"
+                   • For "vase on cabinet" but no vase visible: "Point to the free area near the open doorway"
+               ALWAYS explain your navigation choice in the reasoning field, especially for non-visible targets
             
             **Response Format:**
             For each observation, respond with:
@@ -250,11 +260,16 @@ class VLMPlanner:
                    - No navigation has occurred yet
                    - You haven't reached any destinations
                    - You need to MOVE to confirm completion
-                4. Your task now is to:
-                   - First understand the full panoramic view
-                   - Then analyze the detailed views to choose direction
-                   - Choose the most promising direction for the first subgoal
+                4. Your first observation tasks:
+                   - Understand the full panoramic view and room layout
+                   - Check if any subgoal targets are directly visible
+                   - If targets aren't visible, look for promising paths:
+                     • Doorways, hallways, or openings to unexplored areas
+                     • Architectural cues about room types
+                     • Signs of the type of space you're looking for
+                   - Choose direction based on visible evidence or exploration potential
                 5. You MUST keep ALL subgoals marked as incomplete (completed: false)
+                6. Be explicit in your reasoning about why you chose a direction, especially for non-visible targets
                 """
                 prompt_parts = [initial_prompt + "\n\n" + first_observation_rules]
             else:
@@ -279,11 +294,19 @@ class VLMPlanner:
                     "3. Focus on the first uncompleted subgoal\n"
                     "4. Only mark a subgoal as complete when you're absolutely sure it's achieved based on visual evidence\n"
                     "5. Include the updated subgoal states in your response using the 'subgoal_states' field\n"
-                    "6. IMPORTANT: When describing navigation (subgoal_description):\n"
+                    "6. IMPORTANT Navigation Strategy:\n"
+                    "   IF YOU CAN SEE THE TARGET:\n"
                     "   - Use EXACTLY the same language as in the subgoal list\n"
                     "   - Just add 'Point to the free area near/at/between' in front\n"
-                    "   - Example: For subgoal 'vase on the cabinet' → 'Point to the free area near vase on the cabinet'\n"
-                    "   - Example: For 'free space between couch and table' → 'Point to the free space between couch and table'"
+                    "   - Example: 'Point to the free area near vase on the cabinet'\n\n"
+                    "   IF TARGET IS NOT VISIBLE:\n"
+                    "   - Look for promising paths or openings that might lead to the target\n"
+                    "   - Navigate based on visible landmarks and spatial layout\n"
+                    "   - Example: For 'vase in bedroom' but no bedroom visible:\n"
+                    "     → 'Point to the free area near the hallway entrance'\n"
+                    "   - Example: For 'TV' but not in view:\n"
+                    "     → 'Point to the free area near the living room opening'\n\n"
+                    "   ALWAYS explain your navigation strategy in the reasoning field"
                 )
                 prompt_parts.extend([subgoal_status])
 

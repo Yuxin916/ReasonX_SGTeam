@@ -1,5 +1,6 @@
 services:
   ubuntu20_ros_system:
+    user: root
     runtime: nvidia
     build:
       context: .
