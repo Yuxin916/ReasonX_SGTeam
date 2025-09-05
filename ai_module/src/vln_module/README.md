@@ -17,7 +17,7 @@ This guide explains how to set up and run the VLN (Vision-and-Language Navigatio
 3. **Build and source the workspace, launch the vln nodes**  
     In a second terminal:
     ```bash
-    cd aa_develop/
+    cd ai_module/
     catkin_make
     source devel/setup.bash
     export GOOGLE_API_KEY="your_key"
@@ -30,13 +30,22 @@ This guide explains how to set up and run the VLN (Vision-and-Language Navigatio
     python3.9 src/vln_module/src/vln_module/utils/vlm_server.py
     ```
 
-5. **Publish a challenge question**  
+5. **Start the Roborefer server**
+    Please refer to https://github.com/Zhoues/RoboRefer/tree/main for reference to 1. set up environment 2. download checkpoints and 3. start the server 
+    ```bash
+    python api.py \
+    --port 25547 \
+    --depth_model_path /your/custom/path/depth_anything_v2_vitl.pth \
+    --vlm_model_path /your/custom/path/to/roborefer
+    ```
+
+6. **Publish a challenge question**  
     In another terminal, publish a question to the ROS topic. Example:
     ```bash
     rostopic pub -1 /challenge_question std_msgs/String "navigate to the teal pillow on the sofa farthest from the window"
     ```
 
-6. **Visualize the pixel goal in RViz**  
+7. **Visualize the pixel goal in RViz**  
     In RViz, add the image topic `image_annotated` to see the VLM pixel goal visualized.
 
 ## Notes
