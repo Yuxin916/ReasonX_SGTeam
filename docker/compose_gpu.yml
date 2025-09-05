@@ -10,7 +10,7 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /home/$USER/CMU-VLA-Challenge
+    working_dir: /CMU-VLA-Challenge
     # Enabling Nvidia GPUs
     deploy:
       resources:
@@ -31,7 +31,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /dev/input:/dev/input
       - /dev/bus/usb:/dev/bus/usb:rw
-      - /home/$USER:/home/$USER:rw
+      - /media/jc/data/jc_ws/dev/CMU-VLA-Challenge:/CMU-VLA-Challenge:rw
 
   ubuntu20_ros:
     build:
@@ -42,7 +42,7 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /home/$USER/CMU-VLA-Challenge
+    working_dir: /CMU-VLA-Challenge
     # Enabling Nvidia GPUs
     deploy:
       resources:
@@ -63,4 +63,4 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /dev/input:/dev/input
       - /dev/bus/usb:/dev/bus/usb:rw
-      - /home/$USER:/home/$USER:rw
+      - /media/jc/data/jc_ws/dev/CMU-VLA-Challenge:/CMU-VLA-Challenge:rw
