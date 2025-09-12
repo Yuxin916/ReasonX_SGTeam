@@ -13,13 +13,14 @@ import os
 import ast
 from PIL import Image
 import re
-from typing import Dict
+from typing import Dict, List
 import rospy
 from geometry_msgs.msg import Point
 from PIL import Image
 
 import io
 import base64
+import math
 
 class RoboReferClient:
     """A client to interact with the roborefer grounding server."""
@@ -91,7 +92,8 @@ class ChallengeAgentNode:
         self.current_question = None
         self.is_answering = False
         self.question_type = None
-        self.nearby_objects_data: Dict[str, Marker] = {}
+        # Change to support multiple objects of same type: Dict[str, List[Marker]]
+        self.nearby_objects_data: Dict[str, List[Marker]] = {}
 
         self.pixel_pub = rospy.Publisher('/vlm_pixel_input', Point, queue_size=10)
         self.answer_pub = rospy.Publisher('/selected_object_marker', Marker, queue_size=10)
@@ -241,13 +243,6 @@ class ChallengeAgentNode:
             rospy.logerr("VLM failed to provide a new navigation goal after re-prompting. Stopping mission.")
             self.is_answering = False
 
-    def object_markers_callback(self, msg: MarkerArray):
-        current_objects: Dict[str, Marker] = {}
-        for marker in msg.markers:
-            if marker.ns:
-                current_objects[marker.ns] = marker
-        self.nearby_objects_data = current_objects
-
     def waypoint_reached_callback(self, msg):
         if not self.is_answering or not msg.data:
             return
@@ -266,10 +261,12 @@ class ChallengeAgentNode:
         return 'instruction_following'
 
     def object_markers_callback(self, msg: MarkerArray):
-        current_objects: Dict[str, Marker] = {}
+        current_objects: Dict[str, List[Marker]] = {}
         for marker in msg.markers:
             if marker.ns:
-                current_objects[marker.ns] = marker
+                if marker.ns not in current_objects:
+                    current_objects[marker.ns] = []
+                current_objects[marker.ns].append(marker)
         self.nearby_objects_data = current_objects
 
     def question_callback(self, msg):
@@ -384,10 +381,19 @@ class ChallengeAgentNode:
         if find_result and find_result.get('is_present') and find_result.get('target_name') in self.nearby_objects_data:
             # SUCCESS: The target was found and identified
             target_name = find_result['target_name']
-            target_marker = self.nearby_objects_data[target_name]
-            rospy.loginfo(f"SUCCESS: Identified target '{target_name}'. Publishing its bounding box. Reason: {find_result.get('reasoning')}")
-            self.answer_pub.publish(target_marker)
-            self.is_answering = False # Mission complete!
+            target_markers = self.nearby_objects_data[target_name]
+            
+            # Check if multiple objects of the same type exist
+            if len(target_markers) == 1:
+                # Only one object of this type, use it directly
+                target_marker = target_markers[0]
+                rospy.loginfo(f"SUCCESS: Identified single target '{target_name}'. Publishing its bounding box. Reason: {find_result.get('reasoning')}")
+                self.answer_pub.publish(target_marker)
+                self.is_answering = False
+            else:
+                # Multiple objects of the same type, use RoboRefer to determine which one
+                rospy.loginfo(f"Multiple '{target_name}' objects found ({len(target_markers)}). Using RoboRefer to identify the specific target.")
+                self.resolve_multiple_objects(target_name, target_markers, find_result.get('reasoning', ''))
         else:
             # FAILURE: The target was not found, or an error occurred.
             reason = find_result.get('reasoning') if find_result else "No valid response from VLM."
@@ -415,6 +421,114 @@ class ChallengeAgentNode:
             return
         rospy.loginfo("Waypoint reached. Executing next Reason-Act step.")
         self.execute_reason_act_step()
+
+    def resolve_multiple_objects(self, target_name: str, target_markers: List[Marker], reasoning: str):
+        """
+        When multiple objects of the same type exist, use RoboRefer to determine 
+        which specific object matches the description in the question.
+        """
+        # Get current panoramic image
+        sensor_snapshot = self.vln_data_interface.get_current_snapshot()
+        panoramic_image = sensor_snapshot.get('image')
+        if panoramic_image is None:
+            rospy.logwarn("Cannot resolve multiple objects, image data is not available.")
+            self.reprompt_and_continue()
+            return
+
+        # Use RoboRefer to get the pixel coordinate of the target object
+        # Extract the description from the original question for RoboRefer
+        rospy.loginfo(f"Using RoboRefer to ground the description: '{self.current_question}'")
+        target_pixel = self.roborefer_client.get_pixel_from_description(panoramic_image, self.current_question)
+        
+        if target_pixel is None:
+            rospy.logwarn("RoboRefer failed to ground the target description. Re-prompting to navigate.")
+            self.reprompt_and_continue()
+            return
+
+        # Convert target pixel to comparable format
+        target_x = target_pixel.x
+        target_y = target_pixel.y
+        
+        # Find the marker closest to the RoboRefer result
+        closest_marker = None
+        min_distance = float('inf')
+        
+        for marker in target_markers:
+            # Get marker's projected pixel position
+            # Note: We need to project the marker's 3D position to 2D pixel coordinates
+            marker_pixel = self.project_marker_to_pixel(marker)
+            if marker_pixel is None:
+                continue
+                
+            # Calculate distance between RoboRefer result and marker position
+            distance = ((marker_pixel.x - target_x) ** 2 + (marker_pixel.y - target_y) ** 2) ** 0.5
+            rospy.loginfo(f"Marker {marker.id} at pixel ({marker_pixel.x}, {marker_pixel.y}), distance to target: {distance:.2f}")
+            
+            if distance < min_distance:
+                min_distance = distance
+                closest_marker = marker
+        
+        if closest_marker is not None:
+            rospy.loginfo(f"SUCCESS: Selected closest marker (ID: {closest_marker.id}) at distance {min_distance:.2f} pixels. Reason: {reasoning}")
+            self.answer_pub.publish(closest_marker)
+            self.is_answering = False
+        else:
+            rospy.logwarn("Could not project any markers to pixel coordinates. Re-prompting to navigate.")
+            self.reprompt_and_continue()
+
+    def project_marker_to_pixel(self, marker: Marker):
+        """
+        Project a 3D marker position to 2D pixel coordinates in the panoramic image.
+        This method should mirror the logic used in marker_annotater.py
+        """
+        try:
+            # Transform marker position to sensor frame (similar to marker_annotater.py)
+            # For now, we'll assume the marker is already in the correct frame
+            # In a real implementation, you might need to use tf transforms
+            
+            x = marker.pose.position.x
+            y = marker.pose.position.y
+            z = marker.pose.position.z
+            
+            # Use the same projection logic as in marker_annotater.py
+            # Re-map sensor frame to camera frame
+            x_sens, y_sens, z_sens = x, y, z
+            x_cam = -y_sens     # right
+            y_cam = -z_sens     # down
+            z_cam = x_sens      # forward
+
+            if x_cam == 0 and y_cam == 0 and z_cam == 0:
+                return None  # Invalid point
+
+            # Compute angles
+            yaw = math.atan2(x_cam, z_cam)        # horizontal angle
+            pitch = math.atan2(y_cam, math.sqrt(x_cam**2 + z_cam**2))  # vertical angle
+
+            # Convert FOVs to radians (matching marker_annotater.py parameters)
+            hfov_deg = 360.0
+            vfov_deg = 120.0
+            hfov_rad = math.radians(hfov_deg)
+            vfov_rad = math.radians(vfov_deg)
+
+            # Normalize yaw and pitch to [0, 1]
+            u = (yaw + hfov_rad / 2) / hfov_rad
+            v = (vfov_rad / 2 + pitch) / vfov_rad
+
+            # Convert to pixel coordinates (matching marker_annotater.py image dimensions)
+            image_width = 1920
+            image_height = 640
+            u_pixel = int(u * image_width)
+            v_pixel = int(v * image_height)
+
+            # Check if within image boundaries
+            if 0 <= u_pixel < image_width and 0 <= v_pixel < image_height:
+                return Point(x=u_pixel, y=v_pixel, z=0)
+            else:
+                return None  # Out of bounds
+                
+        except Exception as e:
+            rospy.logwarn(f"Failed to project marker to pixel: {e}")
+            return None
 
 if __name__ == '__main__':
     rospy.init_node('challenge_agent_node')
