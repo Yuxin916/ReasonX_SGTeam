@@ -2,17 +2,7 @@
 
 # VLN Module README
 
-This guide explains how to set up and run the **VLN (Vision-and-Language Navigation)** module for the CMU VLA Challenge system.
-
-## Overview
-
-The VLN module integrates vision-language models with ROS navigation to enable robots to understand natural language instructions and navigate to specified objects in indoor environments.
-
-## Prerequisites
-
-- Docker with GPU support
-- NVIDIA drivers properly installed
-- At least 8GB GPU memory recommended
+This guide explains how to set up and run the **VLN** module for the CMU VLA Challenge system.
 
 ## Setup Instructions
 
