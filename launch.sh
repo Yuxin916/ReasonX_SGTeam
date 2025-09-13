@@ -50,14 +50,14 @@ else
     echo -e "${GREEN}✓ RoboRefer environment already set up${NC}"
 fi
 
-# echo -e "${YELLOW}Step 5: Starting RoboRefer API server${NC}"
-# # Activate roborefer conda environment and launch RoboRefer API
-# conda activate roborefer
-# python ai_module/src/RoboRefer/API/api.py \
-#     --port 25547 \
-#     --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
-#     --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
-# ROBOREFER_PID=$!
+echo -e "${YELLOW}Step 5: Starting RoboRefer API server${NC}"
+# Activate roborefer conda environment and launch RoboRefer API
+conda activate roborefer
+python ai_module/src/RoboRefer/API/api.py \
+    --port 25547 \
+    --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
+    --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
+ROBOREFER_PID=$!
 
 echo -e "${GREEN}All processes started:${NC}"
 echo -e "  ROS Launch PID: $ROS_PID"
