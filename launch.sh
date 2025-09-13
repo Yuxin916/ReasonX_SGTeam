@@ -38,9 +38,19 @@ conda activate rosenv
 python ai_module/src/vln_module/src/vln_module/utils/vlm_server.py &
 VLM_PID=$!
 
+echo -e "${YELLOW}Step 4: Starting RoboRefer API server${NC}"
+# Activate roborefer conda environment and launch RoboRefer API
+conda activate roborefer
+python ai_module/src/RoboRefer/API/api.py \
+    --port 25547 \
+    --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
+    --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
+ROBOREFER_PID=$!
+
 echo -e "${GREEN}All processes started:${NC}"
 echo -e "  ROS Launch PID: $ROS_PID"
 echo -e "  VLM Server PID: $VLM_PID"
+echo -e "  RoboRefer PID: $ROBOREFER_PID"
 echo -e "${YELLOW}Press Ctrl+C to stop all processes${NC}"
 
 # Function to cleanup on exit
@@ -48,6 +58,7 @@ cleanup() {
     echo -e "\n${YELLOW}Stopping all processes...${NC}"
     kill $VLM_PID 2>/dev/null
     kill $ROS_PID 2>/dev/null
+    kill $ROBOREFER_PID 2>/dev/null
     echo -e "${GREEN}All processes stopped${NC}"
     exit 0
 }
