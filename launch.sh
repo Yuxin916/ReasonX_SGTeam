@@ -53,10 +53,12 @@ fi
 echo -e "${YELLOW}Step 5: Starting RoboRefer API server${NC}"
 # Activate roborefer conda environment and launch RoboRefer API
 conda activate roborefer
-python ai_module/src/RoboRefer/API/api.py \
+cd ai_module/src/RoboRefer
+python API/api.py \
     --port 25547 \
-    --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
-    --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
+    --depth_model_path ckpts/depth_anything_v2_vitl.pth \
+    --vlm_model_path ckpts/RoboRefer-8B-SFT &
+cd - > /dev/null
 ROBOREFER_PID=$!
 
 echo -e "${GREEN}All processes started:${NC}"
