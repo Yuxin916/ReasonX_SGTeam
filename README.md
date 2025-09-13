@@ -6,7 +6,14 @@ This guide explains how to set up and run the **VLN** module for the CMU VLA Cha
 
 ## Setup Instructions
 
-### 1. Pull Docker Image and Start Containers
+### 1. Clone Repo, Pull Docker Image and Start Containers
+
+```bash
+# Clone the repository and switch to the VLM baseline branch
+git clone https://github.com/Yuxin916/ReasonX_SGTeam.git
+cd CMU-VLA-Challenge
+git checkout vlm_baseline
+```
 
 ```bash
 # Pull the base image
