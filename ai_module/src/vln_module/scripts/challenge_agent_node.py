@@ -99,7 +99,7 @@ class ChallengeAgentNode:
         # Change to support multiple objects of same type: Dict[str, List[Marker]]
         self.nearby_objects_data: Dict[str, List[Marker]] = {}
         self.reprompt_count = 0  # Track number of reprompts to prevent infinite loops
-        self.max_reprompts = 5   # Maximum number of reprompts before giving up
+        self.max_reprompts = 100   # Maximum number of reprompts before giving up
 
         self.pixel_pub = rospy.Publisher('/vlm_pixel_input', Point, queue_size=10)
         self.answer_pub = rospy.Publisher('/selected_object_marker', Marker, queue_size=10)
