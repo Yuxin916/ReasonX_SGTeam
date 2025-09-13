@@ -39,7 +39,7 @@ class VLMResponse(BaseModel):
     
     image_division: Optional[Literal["left", "center", "right"]] = Field(
         default=None, 
-        description="The selected image division ('left', 'center', 'right') containing the navigation subgoal."
+        description="The selected image division ('left', 'center', 'right') containing the navigation subgoal or target object."
     )
     subgoal_description: Optional[str] = Field(
         default=None, 
@@ -72,8 +72,8 @@ class VLMPlanner:
         if not api_key:
             # api_key = "AIzaSyDo6m4aQtQSU7ILS6ZlDxXz6P_YCxmOeoQ"
             logging.warning("GOOGLE_API_KEY environment variable not set. Using the default API key.")
-            logging.error("GOOGLE_API_KEY environment variable not set!")
-            raise ValueError("API Key not found")
+            # logging.error("GOOGLE_API_KEY environment variable not set!")
+            # raise ValueError("API Key not found")
         
         self.client = genai.Client(api_key=api_key)
         self.question = None
@@ -211,13 +211,22 @@ class VLMPlanner:
             2. For "closest to" queries, focus on reaching the reference object first
             3. For general searches, navigate toward visible targets or promising areas
             4. Only end when target is clearly found with visual confirmation
+            5. **CRITICAL**: When you end (type: "end"), you MUST specify which image division contains the target object
             
             **Response Format:**
+            For navigation:
             {
-                "type": "navigation" or "end",
+                "type": "navigation",
                 "reasoning": "<explain what you see and why you're making this decision>",
                 "image_division": "<'left', 'center', or 'right' - required for navigation>",
                 "subgoal_description": "<where to move, starting with 'Point to the free area'>"
+            }
+            
+            For ending (target found):
+            {
+                "type": "end",
+                "reasoning": "<explain that you found the target and where it is>",
+                "image_division": "<'left', 'center', or 'right' - REQUIRED: which division contains the target object>"
             }
             
             Wait for the first set of images to begin navigation."""

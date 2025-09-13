@@ -11,16 +11,19 @@ import requests
 import tempfile
 import os
 import ast
-from PIL import Image
+from PIL import Image as PILImage
 import re
 from typing import Dict, List
 import rospy
 from geometry_msgs.msg import Point
-from PIL import Image
 
 import io
 import base64
 import math
+import cv2
+import numpy as np
+from cv_bridge import CvBridge, CvBridgeError
+from sensor_msgs.msg import Image as ROSImage
 
 class RoboReferClient:
     """A client to interact with the roborefer grounding server."""
@@ -29,7 +32,7 @@ class RoboReferClient:
         # The prompt suffix required by the roborefer API
         self.suffix = " Your answer should be formatted as a list of tuples, i.e. [(x1, y1)], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
 
-    def get_pixel_from_description(self, image: Image.Image, description: str):
+    def get_pixel_from_description(self, image: PILImage.Image, description: str):
         """
         Takes a PIL image and a text description, encodes the image to base64,
         sends a JSON request to the server, and returns the denormalized pixel coordinate.
@@ -88,17 +91,22 @@ class ChallengeAgentNode:
         self.vln_data_interface = VLNDataInterface()
         self.vlm_client = VLMClient()
         self.roborefer_client = RoboReferClient()
+        self.bridge = CvBridge()  # For image annotation
 
         self.current_question = None
         self.is_answering = False
         self.question_type = None
         # Change to support multiple objects of same type: Dict[str, List[Marker]]
         self.nearby_objects_data: Dict[str, List[Marker]] = {}
+        self.reprompt_count = 0  # Track number of reprompts to prevent infinite loops
+        self.max_reprompts = 5   # Maximum number of reprompts before giving up
 
         self.pixel_pub = rospy.Publisher('/vlm_pixel_input', Point, queue_size=10)
         self.answer_pub = rospy.Publisher('/selected_object_marker', Marker, queue_size=10)
         from std_msgs.msg import Int32
         self.numerical_pub = rospy.Publisher('/numerical_response', Int32, queue_size=10)
+        # Publisher for annotated image showing RoboRefer results and candidate markers
+        self.annotated_image_pub = rospy.Publisher('/roborefer_annotated_image', ROSImage, queue_size=1, latch=True)
 
         rospy.Subscriber('/challenge_question', String, self.question_callback)
         rospy.Subscriber('/waypoint_reached', Bool, self.waypoint_reached_callback)
@@ -160,23 +168,13 @@ class ChallengeAgentNode:
     def handle_end_action(self, action):
         if self.question_type == 'object_reference':
             rospy.loginfo("VLM chose to end. Verifying object presence for reference question.")
-            self.handle_object_reference_end()
+            self.handle_object_reference_end(action)
         elif self.question_type == 'numerical':
             rospy.loginfo("VLM chose to end. Publishing numerical answer.")
             self.handle_numerical_end(action)
         else:
             rospy.loginfo(f"VLM chose to stop: {action.get('reasoning')}. Challenge complete!")
             self.is_answering = False
-
-    def handle_numerical_end(self, action):
-        number = action.get('number')
-        if number is not None:
-            from std_msgs.msg import Int32
-            rospy.loginfo(f"Publishing numerical answer: {number}")
-            self.numerical_pub.publish(Int32(data=int(number)))
-        else:
-            rospy.logwarn("VLM ended mission but did not provide a numerical answer. Stopping.")
-        self.is_answering = False
 
     def handle_navigation_action(self, action, panoramic_image):
         division = action.get('image_division')
@@ -210,24 +208,6 @@ class ChallengeAgentNode:
         else:
             rospy.logerr(f"VLM chose to navigate but was missing division ('{division}') or description ('{description}').")
             self.is_answering = False
-
-    def handle_object_reference_end(self):
-        object_names = list(self.nearby_objects_data.keys())
-        if not object_names:
-            rospy.logwarn("VLM ended mission but no objects are detected nearby. Re-prompting to navigate.")
-            self.reprompt_and_continue()
-            return
-        find_result = self.vlm_client.find_target_in_list(self.current_question, object_names)
-        if find_result and find_result.get('is_present') and find_result.get('target_name') in self.nearby_objects_data:
-            target_name = find_result['target_name']
-            target_marker = self.nearby_objects_data[target_name]
-            rospy.loginfo(f"SUCCESS: Identified target '{target_name}'. Publishing its bounding box. Reason: {find_result.get('reasoning')}")
-            self.answer_pub.publish(target_marker)
-            self.is_answering = False
-        else:
-            reason = find_result.get('reasoning') if find_result else "No valid response from VLM."
-            rospy.loginfo(f"Target not found in current vicinity. Re-prompting VLM to continue navigation. Reason: {reason}")
-            self.reprompt_and_continue()
 
     def reprompt_and_continue(self):
         sensor_snapshot = self.vln_data_interface.get_current_snapshot()
@@ -278,6 +258,7 @@ class ChallengeAgentNode:
         self.current_question = msg.data
         self.question_type = self.classify_question(self.current_question)
         self.nearby_objects_data.clear()
+        self.reprompt_count = 0  # Reset reprompt counter for new mission
 
         if self.vlm_client.start_new_mission(self.current_question):
             self.is_answering = True
@@ -304,7 +285,7 @@ class ChallengeAgentNode:
         if action_type == 'end':
             if self.question_type == 'object_reference':
                 rospy.loginfo("VLM chose to end. Verifying object presence for reference question.")
-                self.handle_object_reference_end()
+                self.handle_object_reference_end(action)
             elif self.question_type == 'numerical':
                 rospy.loginfo("VLM chose to end. Publishing numerical answer.")
                 self.handle_numerical_end(action)
@@ -319,6 +300,9 @@ class ChallengeAgentNode:
             self.is_answering = False
 
     def handle_numerical_end(self, action):
+        # Debug: Print the entire action dictionary to see what VLM returned
+        rospy.loginfo(f"DEBUG: VLM returned action for numerical end: {action}")
+        
         # Expecting the VLM to return a number in the action dict, e.g. {'type': 'end', 'number': 3, ...}
         number = action.get('number')
         if number is not None:
@@ -326,8 +310,120 @@ class ChallengeAgentNode:
             rospy.loginfo(f"Publishing numerical answer: {number}")
             self.numerical_pub.publish(Int32(data=int(number)))
         else:
-            rospy.logwarn("VLM ended mission but did not provide a numerical answer. Stopping.")
+            # Reprompt VLM to provide the proper JSON format with the required 'number' field
+            reasoning = action.get('reasoning', '')
+            rospy.loginfo(f"No 'number' field found. Reprompting VLM to provide proper JSON format.")
+            
+            # Get current image for reprompting
+            sensor_snapshot = self.vln_data_interface.get_current_snapshot()
+            panoramic_image = sensor_snapshot.get('image')
+            if panoramic_image is None:
+                rospy.logwarn("Cannot reprompt VLM, image data is not available.")
+                self.is_answering = False
+                return
+            
+            # Create a specific reprompt message for numerical questions
+            reprompt_msg = f"""You previously provided this reasoning: "{reasoning}"
+            
+            However, your response was missing the required 'number' field. You have two options:
+            
+            1. If you can count the objects from your current view, provide the final answer:
+            {{
+                "type": "end",
+                "reasoning": "<your explanation>",
+                "number": <integer_answer>
+            }}
+            
+            2. If you need a better view to count accurately, continue navigating:
+            {{
+                "type": "navigation",
+                "reasoning": "<explain why you need a better view>",
+                "image_division": "<'left', 'center', or 'right'>",
+                "subgoal_description": "<where to move for better counting view>"
+            }}
+            
+            Please choose the appropriate response based on your confidence in the count."""
+            
+            # Reprompt the VLM
+            reprompt_action = self.vlm_client.get_vlm_response(panoramic_image, self.current_question, reprompt=reprompt_msg)
+            
+            if reprompt_action:
+                if reprompt_action.get('type') == 'end':
+                    reprompt_number = reprompt_action.get('number')
+                    if reprompt_number is not None:
+                        from std_msgs.msg import Int32
+                        rospy.loginfo(f"Reprompt successful! Publishing numerical answer: {reprompt_number}")
+                        self.numerical_pub.publish(Int32(data=int(reprompt_number)))
+                    else:
+                        rospy.logwarn("VLM reprompt still did not provide a numerical answer. Trying text extraction as fallback.")
+                        self._try_extract_number_from_text(reasoning)
+                elif reprompt_action.get('type') == 'navigation':
+                    rospy.loginfo("VLM decided to navigate further for better counting view. Continuing navigation.")
+                    self.handle_navigation_action(reprompt_action, panoramic_image)
+                    # Don't set is_answering = False here, let the navigation continue
+                    return
+                else:
+                    rospy.logwarn(f"VLM reprompt returned unexpected action type: {reprompt_action.get('type')}. Trying text extraction as fallback.")
+                    self._try_extract_number_from_text(reasoning)
+            else:
+                rospy.logwarn("VLM reprompt failed to return any action. Trying text extraction as fallback.")
+                self._try_extract_number_from_text(reasoning)
         self.is_answering = False
+
+    def _try_extract_number_from_text(self, reasoning: str):
+        """Fallback method to extract number from reasoning text when VLM reprompt fails."""
+        rospy.loginfo(f"Attempting text extraction from reasoning: '{reasoning}'")
+        
+        # Try to find numbers in the reasoning text (both digits and words)
+        import re
+        
+        # First try to find digit numbers
+        digit_numbers = re.findall(r'\b\d+\b', reasoning)
+        
+        # Also try to find written numbers
+        word_to_num = {
+            'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+            'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20
+        }
+        
+        written_numbers = []
+        for word, num in word_to_num.items():
+            if re.search(r'\b' + word + r'\b', reasoning.lower()):
+                written_numbers.append(num)
+        
+        if digit_numbers:
+            extracted_number = int(digit_numbers[-1])  # Use last digit number found
+            rospy.loginfo(f"Extracted digit number {extracted_number} from reasoning. Publishing.")
+            from std_msgs.msg import Int32
+            self.numerical_pub.publish(Int32(data=extracted_number))
+        elif written_numbers:
+            extracted_number = written_numbers[-1]  # Use last written number found
+            rospy.loginfo(f"Extracted written number {extracted_number} from reasoning. Publishing.")
+            from std_msgs.msg import Int32
+            self.numerical_pub.publish(Int32(data=extracted_number))
+        else:
+            rospy.logwarn("Could not extract numerical answer from text. Mission failed.")
+
+    def _use_exploration_fallback(self, panoramic_image):
+        """Last resort exploration when VLM fails to respond properly."""
+        rospy.loginfo("Using exploration fallback - trying to navigate to center division.")
+        
+        # Create a simple exploration action to move forward/center
+        fallback_action = {
+            'type': 'navigation',
+            'reasoning': 'Exploration fallback to continue searching for the target',
+            'image_division': 'center',
+            'subgoal_description': 'Point to the free area in the center to continue exploration'
+        }
+        
+        try:
+            self.handle_navigation_action(fallback_action, panoramic_image)
+            rospy.loginfo("Exploration fallback navigation initiated.")
+        except Exception as e:
+            rospy.logerr(f"Exploration fallback failed: {e}. Mission will stop.")
+            self.is_answering = False
 
     def handle_navigation_action(self, action, panoramic_image):
         division = action.get('image_division')
@@ -366,7 +462,7 @@ class ChallengeAgentNode:
             rospy.logerr(f"VLM chose to navigate but was missing division ('{division}') or description ('{description}').")
             self.is_answering = False
 
-    def handle_object_reference_end(self):
+    def handle_object_reference_end(self, action):
         object_names = list(self.nearby_objects_data.keys())
         if not object_names:
             rospy.logwarn("VLM ended mission but no objects are detected nearby. Re-prompting to navigate.")
@@ -393,7 +489,9 @@ class ChallengeAgentNode:
             else:
                 # Multiple objects of the same type, use RoboRefer to determine which one
                 rospy.loginfo(f"Multiple '{target_name}' objects found ({len(target_markers)}). Using RoboRefer to identify the specific target.")
-                self.resolve_multiple_objects(target_name, target_markers, find_result.get('reasoning', ''))
+                # Get the image division where VLM found the target
+                target_division = action.get('image_division')
+                self.resolve_multiple_objects(target_name, target_markers, find_result.get('reasoning', ''), target_division)
         else:
             # FAILURE: The target was not found, or an error occurred.
             reason = find_result.get('reasoning') if find_result else "No valid response from VLM."
@@ -401,6 +499,21 @@ class ChallengeAgentNode:
             self.reprompt_and_continue()
 
     def reprompt_and_continue(self):
+        # Check if we've exceeded maximum reprompts
+        if self.reprompt_count >= self.max_reprompts:
+            rospy.logwarn(f"Exceeded maximum reprompts ({self.max_reprompts}). Using exploration fallback.")
+            sensor_snapshot = self.vln_data_interface.get_current_snapshot()
+            panoramic_image = sensor_snapshot.get('image')
+            if panoramic_image:
+                self._use_exploration_fallback(panoramic_image)
+            else:
+                rospy.logerr("Cannot continue, image data not available. Stopping mission.")
+                self.is_answering = False
+            return
+        
+        self.reprompt_count += 1
+        rospy.loginfo(f"Reprompt attempt {self.reprompt_count}/{self.max_reprompts}")
+        
         sensor_snapshot = self.vln_data_interface.get_current_snapshot()
         panoramic_image = sensor_snapshot.get('image')
         if panoramic_image is None:
@@ -412,9 +525,28 @@ class ChallengeAgentNode:
         
         if action and action.get('type') == 'navigation':
             self.handle_navigation_action(action, panoramic_image)
+        elif action and action.get('type') == 'end':
+            # VLM decided to end instead of navigate - handle the end action
+            rospy.loginfo("VLM chose to end after reprompt. Processing end action.")
+            self.handle_end_action(action)
         else:
-            rospy.logerr("VLM failed to provide a new navigation goal after re-prompting. Stopping mission.")
-            self.is_answering = False
+            # VLM failed to provide a valid response - try alternative approaches
+            rospy.logwarn("VLM failed to provide a valid response after re-prompting. Trying alternative approach.")
+            
+            # Try a more generic reprompt with different wording
+            fallback_msg = "The target object may not be clearly visible from your current position. Please navigate to explore the environment and find a better view of the target object."
+            fallback_action = self.vlm_client.get_vlm_response(panoramic_image, self.current_question, reprompt=fallback_msg)
+            
+            if fallback_action and fallback_action.get('type') == 'navigation':
+                rospy.loginfo("Fallback reprompt successful. Continuing navigation.")
+                self.handle_navigation_action(fallback_action, panoramic_image)
+            elif fallback_action and fallback_action.get('type') == 'end':
+                rospy.loginfo("Fallback reprompt resulted in end action. Processing.")
+                self.handle_end_action(fallback_action)
+            else:
+                # Last resort: continue with a simple exploration command
+                rospy.logwarn("All reprompt attempts failed. Using exploration fallback.")
+                self._use_exploration_fallback(panoramic_image)
 
     def waypoint_reached_callback(self, msg):
         if not self.is_answering or not msg.data:
@@ -422,7 +554,55 @@ class ChallengeAgentNode:
         rospy.loginfo("Waypoint reached. Executing next Reason-Act step.")
         self.execute_reason_act_step()
 
-    def resolve_multiple_objects(self, target_name: str, target_markers: List[Marker], reasoning: str):
+    def draw_and_publish_roborefer_annotation(self, panoramic_image, target_pixel, target_markers, closest_marker_id=None):
+        """
+        Annotate the panoramic image with RoboRefer result and candidate markers,
+        similar to pixel_to_waypoint_node.py
+        """
+        try:
+            # Convert PIL image to OpenCV format
+            cv_image = cv2.cvtColor(np.array(panoramic_image), cv2.COLOR_RGB2BGR)
+            
+            # Draw RoboRefer target pixel (bright green circle with black outline)
+            target_x, target_y = int(target_pixel.x), int(target_pixel.y)
+            cv2.circle(cv_image, (target_x, target_y), radius=20, color=(0, 0, 0), thickness=6)  # Black outline
+            cv2.circle(cv_image, (target_x, target_y), radius=20, color=(0, 255, 0), thickness=3)  # Green fill
+            cv2.putText(cv_image, "RoboRefer", (target_x + 25, target_y - 25), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            
+            # Draw candidate marker positions
+            for marker in target_markers:
+                marker_pixel = self.project_marker_to_pixel(marker)
+                if marker_pixel is not None:
+                    marker_x, marker_y = int(marker_pixel.x), int(marker_pixel.y)
+                    
+                    # Use different colors for selected vs non-selected markers
+                    if closest_marker_id is not None and marker.id == closest_marker_id:
+                        # Selected marker: bright blue
+                        color = (255, 0, 0)  # Blue in BGR
+                        label = f"SELECTED {marker.id}"
+                    else:
+                        # Candidate marker: red
+                        color = (0, 0, 255)  # Red in BGR
+                        label = f"Candidate {marker.id}"
+                    
+                    cv2.circle(cv_image, (marker_x, marker_y), radius=15, color=(0, 0, 0), thickness=4)  # Black outline
+                    cv2.circle(cv_image, (marker_x, marker_y), radius=15, color=color, thickness=2)
+                    cv2.putText(cv_image, label, (marker_x + 20, marker_y + 20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            
+            # Convert back to ROS Image message
+            annotated_image_msg = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
+            annotated_image_msg.header.stamp = rospy.Time.now()
+            
+            # Publish the annotated image
+            self.annotated_image_pub.publish(annotated_image_msg)
+            rospy.loginfo("Published RoboRefer annotated image to /roborefer_annotated_image")
+            
+        except Exception as e:
+            rospy.logwarn(f"Failed to create annotated image: {e}")
+
+    def resolve_multiple_objects(self, target_name: str, target_markers: List[Marker], reasoning: str, target_division: str = None):
         """
         When multiple objects of the same type exist, use RoboRefer to determine 
         which specific object matches the description in the question.
@@ -431,23 +611,48 @@ class ChallengeAgentNode:
         sensor_snapshot = self.vln_data_interface.get_current_snapshot()
         panoramic_image = sensor_snapshot.get('image')
         if panoramic_image is None:
-            rospy.logwarn("Cannot resolve multiple objects, image data is not available.")
+            rospy.logwarn("Cannot resolve multiple objects, image data is not available. Please check if the system is functioning correctly.")
             self.reprompt_and_continue()
             return
 
+        # If VLM specified which division contains the target, use that specific crop
+        roborefer_image = panoramic_image
+        pixel_offset_x = 0
+        
+        if target_division:
+            rospy.loginfo(f"VLM specified target is in '{target_division}' division. Using cropped image for RoboRefer.")
+            crop_width = 640
+            if target_division == 'left':
+                pixel_offset_x = 0
+                roborefer_image = panoramic_image.crop((0, 0, crop_width, 640))
+            elif target_division == 'center':
+                pixel_offset_x = crop_width
+                roborefer_image = panoramic_image.crop((crop_width, 0, 2 * crop_width, 640))
+            elif target_division == 'right':
+                pixel_offset_x = 2 * crop_width
+                roborefer_image = panoramic_image.crop((2 * crop_width, 0, 3 * crop_width, 640))
+            else:
+                rospy.logwarn(f"Unknown target division '{target_division}'. Using full panoramic image.")
+        else:
+            rospy.loginfo("No target division specified. Using full panoramic image for RoboRefer.")
+
         # Use RoboRefer to get the pixel coordinate of the target object
         # Extract the description from the original question for RoboRefer
-        rospy.loginfo(f"Using RoboRefer to ground the description: '{self.current_question}'")
-        target_pixel = self.roborefer_client.get_pixel_from_description(panoramic_image, self.current_question)
+        rospy.loginfo(f"Using RoboRefer to ground the description: '{self.current_question}' in {roborefer_image.size} image")
+        target_pixel = self.roborefer_client.get_pixel_from_description(roborefer_image, self.current_question)
+        
+        if target_pixel and target_division:
+            rospy.loginfo(f"RoboRefer found target at ({target_pixel.x}, {target_pixel.y}) in {target_division} crop, adjusting to ({target_pixel.x + pixel_offset_x}, {target_pixel.y}) on full image")
         
         if target_pixel is None:
             rospy.logwarn("RoboRefer failed to ground the target description. Re-prompting to navigate.")
             self.reprompt_and_continue()
             return
 
-        # Convert target pixel to comparable format
-        target_x = target_pixel.x
+        # Convert target pixel to comparable format and adjust for crop offset
+        target_x = target_pixel.x + pixel_offset_x
         target_y = target_pixel.y
+        rospy.loginfo(f"Adjusted target coordinates: ({target_x}, {target_y}) on full panoramic image")
         
         # Find the marker closest to the RoboRefer result
         closest_marker = None
@@ -468,6 +673,18 @@ class ChallengeAgentNode:
                 min_distance = distance
                 closest_marker = marker
         
+        # Draw and publish annotated image showing RoboRefer result and all candidate markers
+        closest_marker_id = closest_marker.id if closest_marker is not None else None
+        
+        # Create adjusted target pixel for annotation (on full panoramic image)
+        class AdjustedPixel:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+        
+        adjusted_target_pixel = AdjustedPixel(target_x, target_y)
+        self.draw_and_publish_roborefer_annotation(panoramic_image, adjusted_target_pixel, target_markers, closest_marker_id)
+        
         if closest_marker is not None:
             rospy.loginfo(f"SUCCESS: Selected closest marker (ID: {closest_marker.id}) at distance {min_distance:.2f} pixels. Reason: {reasoning}")
             self.answer_pub.publish(closest_marker)
@@ -482,13 +699,36 @@ class ChallengeAgentNode:
         This method should mirror the logic used in marker_annotater.py
         """
         try:
-            # Transform marker position to sensor frame (similar to marker_annotater.py)
-            # For now, we'll assume the marker is already in the correct frame
-            # In a real implementation, you might need to use tf transforms
+            # Transform marker position to sensor frame (same as marker_annotater.py)
+            # Import tf here to avoid circular imports
+            import tf
+            from geometry_msgs.msg import PoseStamped
             
-            x = marker.pose.position.x
-            y = marker.pose.position.y
-            z = marker.pose.position.z
+            # Create tf listener if not exists
+            if not hasattr(self, 'tf_listener'):
+                self.tf_listener = tf.TransformListener()
+            
+            # Create PoseStamped for the marker with current timestamp
+            marker_pose = PoseStamped()
+            marker_pose.header.frame_id = marker.header.frame_id
+            marker_pose.header.stamp = rospy.Time.now()  # Use current time to avoid extrapolation
+            marker_pose.pose = marker.pose
+            
+            # Transform to sensor frame with multiple timestamp approaches
+            try:
+                # First try: Use most recent transform
+                self.tf_listener.waitForTransform("sensor", marker.header.frame_id, rospy.Time(0), rospy.Duration(1.0))
+                marker_pose_sensor = self.tf_listener.transformPose("sensor", marker_pose)
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                # Fallback: Try with rospy.Time(0) timestamp for the pose too
+                marker_pose.header.stamp = rospy.Time(0)
+                self.tf_listener.waitForTransform("sensor", marker.header.frame_id, rospy.Time(0), rospy.Duration(1.0))
+                marker_pose_sensor = self.tf_listener.transformPose("sensor", marker_pose)
+            
+            x = marker_pose_sensor.pose.position.x
+            y = marker_pose_sensor.pose.position.y
+            z = marker_pose_sensor.pose.position.z
+            rospy.logdebug(f"Marker {marker.id} in sensor frame: ({x:.2f}, {y:.2f}, {z:.2f})")
             
             # Use the same projection logic as in marker_annotater.py
             # Re-map sensor frame to camera frame
@@ -526,6 +766,9 @@ class ChallengeAgentNode:
             else:
                 return None  # Out of bounds
                 
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+            rospy.logwarn(f"Transform to sensor frame failed: {e}")
+            return None
         except Exception as e:
             rospy.logwarn(f"Failed to project marker to pixel: {e}")
             return None

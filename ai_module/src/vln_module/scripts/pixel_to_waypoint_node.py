@@ -121,9 +121,28 @@ class PixelToWaypointNode:
         rotation_matrix = tft.quaternion_matrix(q)[:3, :3]
         ray_m = rotation_matrix.dot(ray_c)
         
+        # If ray is pointing up or horizontal, adjust it to point slightly downward
         if ray_m[2] >= 0:
-            rospy.logwarn("Cannot calculate waypoint. Ray is pointing up or horizontal in the map frame.")
-            return
+            rospy.logwarn("Ray is pointing up or horizontal. Adjusting to point downward by lowering pixel by 10 pixels.")
+            # Adjust the v coordinate (add 10 pixels downward) and recalculate
+            v_adjusted = v + 10
+            elevation_rad_adjusted = -((v_adjusted - cy) / height) * math.radians(VFOV_deg)
+            
+            ray_c_adjusted = np.array([
+                math.cos(elevation_rad_adjusted) * math.cos(azimuth_rad),
+                math.cos(elevation_rad_adjusted) * math.sin(azimuth_rad),
+                math.sin(elevation_rad_adjusted)
+            ])
+            
+            ray_m = rotation_matrix.dot(ray_c_adjusted)
+            rospy.loginfo(f"Adjusted ray direction: z-component = {ray_m[2]:.3f}")
+            
+            # If still pointing up after adjustment, force it to point slightly down
+            if ray_m[2] >= 0:
+                rospy.logwarn("Ray still pointing up after adjustment. Forcing downward direction.")
+                ray_m[2] = -0.1  # Force a small downward component
+                # Normalize to maintain unit vector properties
+                ray_m = ray_m / np.linalg.norm(ray_m)
 
         robot_pos = np.array([odom_pose.position.x, odom_pose.position.y, odom_pose.position.z])
         t = -robot_pos[2] / ray_m[2]

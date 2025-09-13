@@ -18,7 +18,7 @@ class NavigationWatcherNode:
         # NEW: Threshold for rotational speed (yaw) in radians per second
         self.stationary_angular_threshold = 0.1  # radians per second (approx. 5.7 deg/s)
         
-        self.stationary_time_threshold = rospy.Duration(1.0)  # 1 second
+        self.stationary_time_threshold = rospy.Duration(3.0)  # 1 second
 
         # --- State Variables ---
         self.target_waypoint = None
