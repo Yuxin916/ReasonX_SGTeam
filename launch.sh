@@ -38,19 +38,31 @@ conda activate rosenv
 python ai_module/src/vln_module/src/vln_module/utils/vlm_server.py &
 VLM_PID=$!
 
-echo -e "${YELLOW}Step 4: Starting RoboRefer API server${NC}"
-# Activate roborefer conda environment and launch RoboRefer API
-conda activate roborefer
-python ai_module/src/RoboRefer/API/api.py \
-    --port 25547 \
-    --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
-    --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
-ROBOREFER_PID=$!
+echo -e "${YELLOW}Step 4: Setting up RoboRefer environment (if needed)${NC}"
+# Check if RoboRefer environment is fully set up, if not, run the setup
+if ! conda list -n roborefer | grep -q "flash-attn"; then
+    echo -e "${YELLOW}Running RoboRefer environment setup...${NC}"
+    cd ai_module/src/RoboRefer
+    ./env_setup.sh roborefer
+    cd - > /dev/null
+    echo -e "${GREEN}✓ RoboRefer environment setup complete${NC}"
+else
+    echo -e "${GREEN}✓ RoboRefer environment already set up${NC}"
+fi
+
+# echo -e "${YELLOW}Step 5: Starting RoboRefer API server${NC}"
+# # Activate roborefer conda environment and launch RoboRefer API
+# conda activate roborefer
+# python ai_module/src/RoboRefer/API/api.py \
+#     --port 25547 \
+#     --depth_model_path ai_module/src/RoboRefer/ckpts/depth_anything_v2_vitl.pth \
+#     --vlm_model_path ai_module/src/RoboRefer/ckpts/RoboRefer-8B-SFT &
+# ROBOREFER_PID=$!
 
 echo -e "${GREEN}All processes started:${NC}"
 echo -e "  ROS Launch PID: $ROS_PID"
 echo -e "  VLM Server PID: $VLM_PID"
-echo -e "  RoboRefer PID: $ROBOREFER_PID"
+# echo -e "  RoboRefer PID: $ROBOREFER_PID"
 echo -e "${YELLOW}Press Ctrl+C to stop all processes${NC}"
 
 # Function to cleanup on exit
