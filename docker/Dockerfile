@@ -23,14 +23,21 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     python3-vcstools \
     && rm -rf /var/lib/apt/lists/*
 
-# === [5] Install ROS core packages ===
+# === [5] Install ROS core packages and Python tools ===
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        python3-pip \
         python3-netifaces \
         ros-noetic-ros-base=1.5.0-1* \
         ros-noetic-cv-bridge \
         ros-noetic-tf \
     && rm -rf /var/lib/apt/lists/*
+
+# === [5.1] Install Python deps for system Python (for ROS nodes) ===
+RUN /usr/bin/python3 -m pip install pillow requests flask
+
+# === [5.2] Force catkin to use system Python ===
+ENV PYTHON_EXECUTABLE=/usr/bin/python3
 
 # === [6] Install Miniconda ===
 ENV CONDA_DIR=/opt/conda
@@ -61,9 +68,6 @@ RUN /opt/conda/bin/conda init bash && \
 RUN /bin/bash -c "source activate rosenv && \
     pip install --no-cache-dir -U pip && \
     pip install --no-cache-dir google-genai flask pillow requests"
-
-# === [8.1] Install Python deps for system Python (for ROS nodes) ===
-RUN /usr/bin/python3 -m pip install requests pillow flask
 
 # === [9] Bootstrap rosdep ===
 RUN rosdep init && \
