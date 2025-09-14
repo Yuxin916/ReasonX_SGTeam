@@ -109,7 +109,7 @@ Monitor system performance through ROS logs:
 # Monitor answers
 rostopic echo /numerical_response
 rostopic echo /selected_object_marker
-
+```
 
 ## System Architecture
 
@@ -135,8 +135,6 @@ rostopic echo /selected_object_marker
    - Provides object grounding and localization
    - Resolves multiple object instances
    - Runs on dedicated conda environment
-
-
 
 ### Model Paths
 Update paths in launch scripts if using custom model locations:
