@@ -9,7 +9,7 @@ This guide explains how to set up and run the **VLN** module for the CMU VLA Cha
 ### 1. Clone Repo, Download checkpoints
 
 ```bash
-# Clone the repository and switch to the VLM baseline branch
+# Clone the repository and switch to the VLM baseline branch, download checkpoints
 git clone https://github.com/Yuxin916/ReasonX_SGTeam.git
 cd ReasonX_SGTeam
 git checkout vlm_baseline

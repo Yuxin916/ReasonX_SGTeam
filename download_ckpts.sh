@@ -2,6 +2,8 @@
 # One-shot script to download RoboRefer and DepthAnything checkpoints
 set -e
 
+git submodule update --init --recursive
+
 # Save the original directory
 ORIG_DIR="$(pwd)"
 
