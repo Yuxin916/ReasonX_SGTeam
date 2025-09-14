@@ -88,9 +88,10 @@ Once the system is running, you can send navigation instructions via ROS topics:
 
 ```bash
 # Example navigation commands
-rostopic pub -1 /challenge_question std_msgs/String "navigate to the teal pillow on the sofa farthest from the window"
-rostopic pub -1 /challenge_question std_msgs/String "go to the red book on the table"
-rostopic pub -1 /challenge_question std_msgs/String "find the coffee mug near the kitchen counter"
+rostopic pub -1 /challenge_question std_msgs/String "Find teal pillow on the sofa farthest from the window"
+rostopic pub -1 /challenge_question std_msgs/String "How many books are on the sofa"
+rostopic pub -1 /challenge_question std_msgs/String "Go to the potted plant closest to the pyramid candle holder and stop at the vase between the
+TV and the door."
 ```
 
 ### 4. Visualization and Monitoring
