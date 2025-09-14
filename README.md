@@ -6,14 +6,17 @@ This guide explains how to set up and run the **VLN** module for the CMU VLA Cha
 
 ## Setup Instructions
 
-### 1. Clone Repo, Pull Docker Image and Start Containers
+### 1. Clone Repo, Download checkpoints
 
 ```bash
 # Clone the repository and switch to the VLM baseline branch
 git clone https://github.com/Yuxin916/ReasonX_SGTeam.git
-cd CMU-VLA-Challenge
+cd ReasonX_SGTeam
 git checkout vlm_baseline
+bash download_ckpts.sh # This takes some time
 ```
+
+### 2. Pull Docker Image and Start Containers
 
 ```bash
 # Pull the base image
@@ -21,6 +24,7 @@ docker pull xerneaschen/docker-ubuntu20_ros:latest
 
 # Navigate to docker directory and start containers
 cd docker
+xhost +
 docker compose -f compose_gpu.yml up --build -d
 ```
 
