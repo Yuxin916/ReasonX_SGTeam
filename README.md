@@ -48,6 +48,7 @@ docker exec -it ubuntu20_ros bash
 - ROS environment setup
 - VLM server initialization  
 - RoboRefer API server startup
+- Challenge Agent startup
 - All necessary conda environments
 
 <!-- 3. **Build and source the workspace, launch the vln nodes**  
