@@ -97,29 +97,19 @@ TV and the door."
 ### 4. Visualization and Monitoring
 
 #### RViz Visualization
-Launch RViz to monitor the navigation process:
-```bash
-# In the AI container
-rosrun rviz rviz
-```
+Open RViz to monitor the navigation process
 
 **Add these topics in RViz:**
-- `/image_annotated` - Shows VLM pixel targets with visual markers
-- `/way_point_with_heading` - Displays computed waypoints
-- `/visualization_marker_array` - Shows detected objects and navigation markers
+- `/image_annotated` - Shows VLM pixel targets grounded by Roborefer
+- `/roborefer_annotated_image` - Shows projected gt objects (only available when multiple objects of same type is detected)
 
 #### Monitoring Logs
 Monitor system performance through ROS logs:
 ```bash
-# Monitor challenge agent activity
-rostopic echo /challenge_question
+# Monitor answers
+rostopic echo /numerical_response
+rostopic echo /selected_object_marker
 
-# Check navigation decisions
-rostopic echo /way_point_with_heading
-
-# View detected objects
-rostopic echo /vlm_pixel_input
-```
 
 ## System Architecture
 
@@ -146,48 +136,7 @@ rostopic echo /vlm_pixel_input
    - Resolves multiple object instances
    - Runs on dedicated conda environment
 
-### Data Flow
 
-```
-Natural Language Instruction → Challenge Agent → VLM Processing → 
-Object Detection → Pixel Coordinate → 3D Waypoint → Navigation Action
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**"ModuleNotFoundError: No module named 'llava'"**
-- The RoboRefer environment setup may be incomplete
-- Try rebuilding the roborefer conda environment:
-  ```bash
-  cd ai_module/src/RoboRefer
-  ./env_setup.sh roborefer
-  ```
-
-**Navigation failures or timeouts**
-- Check network connectivity to external APIs (Gemini, RoboRefer)
-- Verify all ROS nodes are running: `rosnode list`
-- Monitor topic activity: `rostopic list`
-
-**Image processing errors**
-- Ensure camera topics are publishing: `rostopic echo /camera/image`
-- Check image dimensions match expected panoramic format (1920x640)
-
-### Performance Tips
-
-- Ensure adequate GPU memory (8GB+ recommended)
-- Use SSD storage for faster model loading
-- Monitor system resources during operation
-- Consider reducing image resolution for faster processing on limited hardware
-
-## Configuration
-
-### Environment Variables
-```bash
-export GOOGLE_API_KEY="your_gemini_api_key_here"
-export ROBOREFER_SERVER_URL="100.94.98.59:25547"  # Or your server address
-```
 
 ### Model Paths
 Update paths in launch scripts if using custom model locations:
